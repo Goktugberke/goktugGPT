@@ -52,6 +52,32 @@ def parse_args():
     return parser.parse_args()
 
 
+def _find_latest_checkpoint(checkpoint_dir: str) -> str | None:
+    """
+    Find the most advanced checkpoint available.
+    Priority: highest step number > best_model > final_model
+    """
+    import glob
+    ckpt_dir = checkpoint_dir
+
+    # Look for step checkpoints — pick the one with the highest step
+    step_files = glob.glob(os.path.join(ckpt_dir, "checkpoint_step_*.pt"))
+    if step_files:
+        # Extract step numbers and pick the highest
+        def _step(p):
+            m = __import__("re").search(r"checkpoint_step_(\d+)\.pt", p)
+            return int(m.group(1)) if m else 0
+        latest = max(step_files, key=_step)
+        return latest
+
+    # Fall back to named checkpoints
+    for name in ["best_model.pt", "final_model.pt"]:
+        p = os.path.join(ckpt_dir, name)
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def main():
     args = parse_args()
 
@@ -159,12 +185,11 @@ def main():
 
     resume_path = None
     if args.resume:
-        # Find latest checkpoint
-        for name in ["best_model.pt", "final_model.pt"]:
-            p = os.path.join(config.checkpoint_dir, name)
-            if os.path.exists(p):
-                resume_path = p
-                break
+        resume_path = _find_latest_checkpoint(config.checkpoint_dir)
+        if resume_path:
+            print(f"Resuming from: {resume_path}")
+        else:
+            print("No checkpoint found to resume from. Starting fresh.")
 
     trainer.train(resume_from=resume_path)
 

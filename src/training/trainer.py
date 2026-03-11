@@ -155,18 +155,17 @@ class Trainer:
         """
         start_epoch = 0
         if resume_from and os.path.exists(resume_from):
-            _, extra = GoktugGPT.load_checkpoint(
-                resume_from,
-                self.config.vocab_size,
-                self.config.n_embed,
-                self.config.n_head,
-                self.config.n_layer,
-                device=str(self.device),
-            )
+            payload = torch.load(resume_from, map_location=self.device)
+            self.model.load_state_dict(payload["model_state"])
+            extra = {k: v for k, v in payload.items() if k != "model_state"}
             start_epoch = extra.get("epoch", 0)
             self.global_step = extra.get("global_step", 0)
             self.best_val_loss = extra.get("best_val_loss", float("inf"))
-            print(f"Resumed from epoch {start_epoch}, step {self.global_step}")
+            print(
+                f"Resumed from checkpoint: {resume_from}\n"
+                f"  Epoch: {start_epoch}  |  Global step: {self.global_step}  |"
+                f"  Best val loss so far: {self.best_val_loss:.4f}"
+            )
 
         print(
             f"\n{'='*60}\n"

@@ -78,11 +78,29 @@ class TinyConfig(ModelConfig):
 
 @dataclass
 class MediumConfig(ModelConfig):
-    """Medium config — good balance of quality and speed."""
+    """Medium config — good balance of quality and speed. Needs GPU (4GB+ VRAM)."""
     vocab_size: int = 16000
     n_embed: int = 512
     n_head: int = 8
     n_layer: int = 8
     max_seq_len: int = 1024
-    batch_size: int = 4
-    max_epochs: int = 100
+    batch_size: int = 16
+    max_epochs: int = 50
+    warmup_steps: int = 400
+    eval_interval: int = 500
+    save_interval: int = 1000
+
+
+@dataclass
+class LargeConfig(ModelConfig):
+    """Large config — high quality. Needs GPU (8GB+ VRAM). ~85M parameters."""
+    vocab_size: int = 32000
+    n_embed: int = 768
+    n_head: int = 12
+    n_layer: int = 12
+    max_seq_len: int = 1024
+    batch_size: int = 16
+    max_epochs: int = 30
+    warmup_steps: int = 1000
+    eval_interval: int = 500
+    save_interval: int = 1000

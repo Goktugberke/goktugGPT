@@ -27,7 +27,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train goktugGPT from scratch")
     parser.add_argument(
         "--config",
-        choices=["tiny", "default", "medium"],
+        choices=["tiny", "default", "medium", "large"],
         default="tiny",
         help="Model size configuration (default: tiny — fastest for local training)",
     )
@@ -82,12 +82,14 @@ def main():
     args = parse_args()
 
     # --- Load config ---
-    from config import ModelConfig, TinyConfig, MediumConfig
+    from config import ModelConfig, TinyConfig, MediumConfig, LargeConfig
 
     if args.config == "tiny":
         config = TinyConfig()
     elif args.config == "medium":
         config = MediumConfig()
+    elif args.config == "large":
+        config = LargeConfig()
     else:
         config = ModelConfig()
 

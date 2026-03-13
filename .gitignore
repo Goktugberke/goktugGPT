@@ -31,10 +31,15 @@ data/*.zip
 data/train_big.txt
 data/train_combined.txt
 
-# Keep the base Q&A training file and download scripts
+# Generated conversation datasets — re-created by download_conversations.py
+data/train_chat.txt
+data/conversations/
+
+# Keep the base Q&A training file and all scripts
 !data/train.txt
 !data/download_data.py
 !data/prepare_data.py
+!data/download_conversations.py
 
 # ── IDE / OS ──────────────────────────────────────────────────────────────────
 .vscode/

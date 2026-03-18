@@ -17,6 +17,7 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
+from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -95,6 +96,12 @@ class Trainer:
             betas=(0.9, 0.95),
             eps=1e-8,
         )
+
+        # Mixed precision scaler (only active when CUDA is available)
+        self.use_amp = torch.cuda.is_available()
+        self.scaler = GradScaler(enabled=self.use_amp)
+        if self.use_amp:
+            print("Mixed precision (AMP fp16) enabled — faster training, lower VRAM usage.")
 
         # Total steps for LR schedule
         self.total_steps = config.max_epochs * len(train_dl)
@@ -194,19 +201,22 @@ class Trainer:
                 # Update LR
                 lr = self._update_lr()
 
-                # Forward
-                out = self.model(x, targets=y)
-                loss = out["loss"]
-
-                # Backward
+                # Forward (mixed precision)
                 self.optimizer.zero_grad()
-                loss.backward()
+                with autocast(enabled=self.use_amp):
+                    out = self.model(x, targets=y)
+                    loss = out["loss"]
 
-                # Gradient clipping
+                # Backward (scaler handles fp16 gradient scaling)
+                self.scaler.scale(loss).backward()
+
+                # Gradient clipping (unscale first)
+                self.scaler.unscale_(self.optimizer)
                 nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.config.grad_clip
                 )
-                self.optimizer.step()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
 
                 loss_val = loss.item()
                 epoch_loss += loss_val

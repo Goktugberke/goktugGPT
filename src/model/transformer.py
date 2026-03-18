@@ -20,6 +20,7 @@ The Feed-Forward Network (FFN) is a 2-layer MLP with GELU activation:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from .attention import MultiHeadSelfAttention
 
@@ -119,6 +120,7 @@ class TransformerDecoder(nn.Module):
             ]
         )
         self.n_layer = n_layer
+        self.use_gradient_checkpointing = False
 
     def forward(
         self, x: torch.Tensor, return_all_attn: bool = False
@@ -128,6 +130,8 @@ class TransformerDecoder(nn.Module):
             if return_all_attn:
                 x, attn = block(x, return_attn=True)
                 all_attn.append(attn)
+            elif self.use_gradient_checkpointing and x.requires_grad:
+                x = checkpoint(block, x, use_reentrant=False)
             else:
                 x = block(x)
 

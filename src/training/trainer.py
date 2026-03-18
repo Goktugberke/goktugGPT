@@ -17,7 +17,6 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -99,9 +98,13 @@ class Trainer:
 
         # Mixed precision scaler (only active when CUDA is available)
         self.use_amp = torch.cuda.is_available()
-        self.scaler = GradScaler(enabled=self.use_amp)
+        self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
         if self.use_amp:
             print("Mixed precision (AMP fp16) enabled — faster training, lower VRAM usage.")
+            # Gradient checkpointing: trades compute for memory (recomputes activations
+            # during backward instead of storing them — cuts VRAM usage ~40%)
+            self.model.enable_gradient_checkpointing()
+            print("Gradient checkpointing enabled — ~40% less VRAM, ~20% slower.")
 
         # Total steps for LR schedule
         self.total_steps = config.max_epochs * len(train_dl)
@@ -203,7 +206,7 @@ class Trainer:
 
                 # Forward (mixed precision)
                 self.optimizer.zero_grad()
-                with autocast(enabled=self.use_amp):
+                with torch.amp.autocast("cuda", enabled=self.use_amp):
                     out = self.model(x, targets=y)
                     loss = out["loss"]
 

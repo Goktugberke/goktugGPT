@@ -245,6 +245,10 @@ class GoktugGPT(nn.Module):
     # Utilities
     # ------------------------------------------------------------------
 
+    def enable_gradient_checkpointing(self):
+        """Enable gradient checkpointing on the decoder to save VRAM."""
+        self.decoder.use_gradient_checkpointing = True
+
     def num_parameters(self, trainable_only: bool = True) -> int:
         if trainable_only:
             return sum(p.numel() for p in self.parameters() if p.requires_grad)

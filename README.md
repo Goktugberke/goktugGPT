@@ -25,6 +25,7 @@ Every component (tokenizer, attention, transformer, training loop, GUI) is imple
 - [Running the GUI](#running-the-gui)
 - [Configuration](#configuration)
 - [How Generation Works](#how-generation-works)
+- [Training on Google Colab](#training-on-google-colab)
 
 ---
 
@@ -51,9 +52,12 @@ tokenization → embeddings → attention → transformer → generation → rea
 | Fully offline / no API | ✅ |
 | GPU acceleration (CUDA / Apple MPS) | ✅ |
 | Checkpoint saving and resuming | ✅ |
-| Configurable model size | ✅ |
+| Configurable model size (tiny → large) | ✅ |
+| Mixed precision training (AMP fp16) | ✅ |
+| Gradient checkpointing (low VRAM) | ✅ |
+| Google Colab training support | ✅ |
 
-> **Note:** Quality of responses is directly tied to the size of your training data and how long you train. The default `TinyConfig` is designed for fast local training on a CPU — for better results, add more training data and use `MediumConfig` on a GPU.
+> **Note:** Quality of responses is directly tied to the size of your training data and how long you train. `TinyConfig` is for fast CPU experiments — for real results, use `MediumConfig` or `LargeConfig` on a GPU with the full dataset (94K+ lines).
 
 ---
 
@@ -227,18 +231,23 @@ The thinking output is displayed in a collapsible panel in the GUI, or shown in 
 
 ## Training Data
 
-**File:** `data/train.txt`
+**Script:** `data/download_conversations.py`
+**Output:** `data/train_chat.txt`
 
-The training data is a custom-built conversational dataset with ~100 Q&A pairs.
+The training data is built automatically from multiple sources using `download_conversations.py`:
 
-**Topics covered:**
-- Greetings and small talk
-- Mathematics (arithmetic, algebra)
-- Geography (capitals, continents, rivers)
-- Science (physics, chemistry, biology, astronomy)
-- Artificial intelligence and machine learning
-- Programming and computer science
-- Philosophy, history, and general knowledge
+| Source | Lines | Description |
+|--------|-------|-------------|
+| Synthetic Q&A | ~12,600 | Math (1889), capitals (348), animals (120), definitions (60), greetings, science, history |
+| Cornell Movie Dialogs | ~80,000 | Real movie conversations (~220K pairs available) |
+| DailyDialog | ~80,000 | Daily life conversations |
+| **Total** | **~94,000+** | **~4.1M tokens, ~18MB** |
+
+**Generate the dataset:**
+```bash
+python data/download_conversations.py              # Full dataset (Cornell + DailyDialog + synthetic)
+python data/download_conversations.py --synthetic-only  # Only synthetic pairs (~12K lines, fast)
+```
 
 **Format:**
 ```
@@ -248,7 +257,7 @@ The training data is a custom-built conversational dataset with ~100 Q&A pairs.
 Every example includes a thinking stage, teaching the model to reason before answering.
 
 **Extending the training data:**
-Add more lines to `data/train.txt` in the same format. More data = better, more knowledgeable responses. You can also replace the file entirely with your own dataset.
+Add more lines to `data/train_chat.txt` in the same format. More data = better, more knowledgeable responses. You can also add new sources to `download_conversations.py`.
 
 ---
 
@@ -264,7 +273,7 @@ Add more lines to `data/train.txt` in the same format. More data = better, more 
 | **matplotlib** | Loss curve plotting (optional) |
 
 **Everything else is built from scratch:**
-- BPE tokenizer: pure Python, no `tokenizers` library
+- BPE tokenizer: `tokenizers` library for fast training, custom implementation for encoding
 - Transformer: pure PyTorch `nn.Module`, no `transformers` library
 - Attention: manual Q/K/V projections, not `nn.MultiheadAttention`
 - Training loop: manual gradient updates, not `Trainer` from Hugging Face
@@ -283,7 +292,8 @@ goktugGPT/
 ├── requirements.txt
 │
 ├── data/
-│   └── train.txt               # Training conversations
+│   ├── train_chat.txt          # Generated training data (94K+ lines)
+│   └── download_conversations.py  # Dataset builder (Cornell, DailyDialog, synthetic)
 │
 ├── checkpoints/                # Saved model weights (created after training)
 │   ├── tokenizer.json
@@ -345,11 +355,14 @@ pip install torch --index-url https://download.pytorch.org/whl/cu121
 ## Training the Model
 
 ```bash
-# Fast training on CPU (default — TinyConfig)
-python train.py
+# 1. First, generate the dataset
+python data/download_conversations.py
 
-# Train with a larger model (better quality, needs more time/RAM)
-python train.py --config medium
+# 2. Train (pick a config based on your hardware)
+python train.py --config tiny                        # CPU, fast experiment
+python train.py --config default                     # Small GPU (4GB VRAM)
+python train.py --config medium --batch-size 2       # GTX 1650 (4GB VRAM)
+python train.py --config large --batch-size 4        # T4/RTX 3060+ (8GB+ VRAM)
 
 # Override specific hyperparameters
 python train.py --epochs 100 --batch-size 4 --lr 3e-4
@@ -360,29 +373,35 @@ python train.py --data path/to/your/data.txt
 # Resume from the last saved checkpoint
 python train.py --resume
 
+# Save checkpoints to a custom directory (useful for Google Drive)
+python train.py --checkpoint-dir /content/drive/MyDrive/goktugGPT/checkpoints
+
 # Only train the tokenizer (skip model training)
 python train.py --tokenizer-only
 ```
 
 **What happens during training:**
 
-1. The BPE tokenizer is trained on `data/train.txt` and saved to `checkpoints/tokenizer.json`.
+1. The BPE tokenizer is trained on the dataset and saved to `checkpoints/tokenizer.json`.
 2. Training and validation datasets are built from the tokenized text.
 3. The GoktugGPT model is initialized with random weights.
-4. The training loop runs for `max_epochs` epochs:
+4. **AMP mixed precision (fp16)** is automatically enabled on GPU — halves VRAM usage and speeds up training.
+5. **Gradient checkpointing** is enabled on GPU — trades ~20% speed for ~40% less VRAM.
+6. The training loop runs for `max_epochs` epochs:
    - Each batch: forward pass → compute cross-entropy loss → backprop → weight update
    - Learning rate warms up linearly then follows a cosine decay schedule
    - Every `eval_interval` steps the model is evaluated on the validation set
    - The best checkpoint (lowest validation loss) is saved to `checkpoints/best_model.pt`
-5. Training finishes and `checkpoints/final_model.pt` is saved.
+7. Training finishes and `checkpoints/final_model.pt` is saved.
 
-**Expected training time:**
+**Expected training time (94K lines dataset):**
 
-| Config | Parameters | CPU time (50 epochs) |
-|---|---|---|
-| TinyConfig | ~0.5M | ~5–15 minutes |
-| ModelConfig | ~3M | ~30–60 minutes |
-| MediumConfig | ~15M | ~2–4 hours |
+| Config | Parameters | Hardware | Approx. Time |
+|---|---|---|---|
+| TinyConfig | ~1.3M | CPU | ~15–30 min |
+| ModelConfig | ~8.5M | CPU / any GPU | ~1–3 hours |
+| MediumConfig | ~42M | GTX 1650 (4GB) | ~8–15 hours |
+| LargeConfig | ~110M | T4 / RTX 3060+ (8GB+) | ~4–8 hours |
 
 ---
 
@@ -393,14 +412,14 @@ python train.py --tokenizer-only
 ```bash
 python chat.py
 
+# Use a specific config and checkpoint
+python chat.py --config large --checkpoint checkpoints/best_model.pt
+
 # Disable the thinking stage
 python chat.py --no-thinking
 
 # Use a more creative temperature
 python chat.py --temperature 1.2
-
-# Use a specific checkpoint
-python chat.py --checkpoint checkpoints/best_model.pt
 ```
 
 **Terminal commands during chat:**
@@ -435,18 +454,28 @@ The GUI opens automatically at `http://localhost:7860` and provides:
 
 ## Configuration
 
-Three preset configurations are available in `config.py`:
+Four preset configurations are available in `config.py`:
 
-| Setting | TinyConfig | ModelConfig | MediumConfig |
-|---|---|---|---|
-| `vocab_size` | 4,000 | 8,000 | 16,000 |
-| `n_embed` (d_model) | 128 | 256 | 512 |
-| `n_head` | 4 | 8 | 8 |
-| `n_layer` | 3 | 6 | 8 |
-| `max_seq_len` | 256 | 512 | 1024 |
-| `batch_size` | 4 | 8 | 4 |
-| `max_epochs` | 30 | 50 | 100 |
-| Approx. parameters | ~0.5M | ~3M | ~15M |
+| Setting | TinyConfig | ModelConfig | MediumConfig | LargeConfig |
+|---|---|---|---|---|
+| `vocab_size` | 4,000 | 8,000 | 16,000 | 32,000 |
+| `n_embed` (d_model) | 128 | 256 | 512 | 768 |
+| `n_head` | 4 | 8 | 8 | 12 |
+| `n_layer` | 3 | 6 | 8 | 12 |
+| `max_seq_len` | 256 | 512 | 1024 | 1024 |
+| `batch_size` | 4 | 8 | 16 | 16 |
+| `max_epochs` | 30 | 50 | 50 | 30 |
+| Approx. parameters | **~1.3M** | **~8.5M** | **~42M** | **~110M** |
+| Min. VRAM | CPU OK | CPU OK | ~3.5 GB | ~8 GB |
+
+**Which config should I use?**
+
+| Your Hardware | Recommended Config |
+|---|---|
+| CPU only (no GPU) | `tiny` or `default` |
+| GTX 1650 / 4GB VRAM | `medium` with `--batch-size 2` |
+| T4 (Colab free) / RTX 3060 | `large` with `--batch-size 4` |
+| RTX 3090 / A100 | `large` with `--batch-size 16` |
 
 To customize further, edit `config.py` directly or subclass `ModelConfig`.
 
@@ -474,6 +503,77 @@ prompt → [token 1, token 2, ..., token N]
 3. **Top-P (Nucleus):** Sort tokens by probability. Keep only the smallest set of tokens whose cumulative probability exceeds `P`. This adapts dynamically — it keeps fewer tokens when the model is confident and more when it is uncertain.
 
 Generation stops when an `<eos>` token is produced or the maximum token limit is reached.
+
+---
+
+## Training on Google Colab
+
+You can train goktugGPT for free on Google Colab using a T4 GPU (14.5 GB VRAM).
+
+### First-time setup
+
+1. Go to [colab.research.google.com](https://colab.research.google.com) and create a new notebook
+2. Set runtime: `Runtime → Change runtime type → T4 GPU → Save`
+
+```python
+# Cell 1 — Mount Google Drive (persistent storage)
+from google.colab import drive
+drive.mount('/content/drive')
+import os
+os.makedirs('/content/drive/MyDrive/goktugGPT/checkpoints', exist_ok=True)
+```
+
+```python
+# Cell 2 — Clone repo
+!git clone https://github.com/YOUR_USERNAME/goktugGPT.git /content/goktugGPT
+%cd /content/goktugGPT
+!pip install tokenizers tqdm -q
+```
+
+```python
+# Cell 3 — Generate dataset
+!python data/download_conversations.py
+# Backup to Drive so you don't have to regenerate
+!cp data/train_chat.txt /content/drive/MyDrive/goktugGPT/train_chat.txt
+```
+
+```python
+# Cell 4 — Train
+!python train.py \
+    --config large \
+    --data data/train_chat.txt \
+    --epochs 20 \
+    --batch-size 4 \
+    --checkpoint-dir /content/drive/MyDrive/goktugGPT/checkpoints
+```
+
+### Resuming after Colab disconnects
+
+When Colab resets your runtime, just re-run:
+
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+%cd /content/goktugGPT
+!cp /content/drive/MyDrive/goktugGPT/train_chat.txt data/train_chat.txt
+
+!python train.py \
+    --config large \
+    --data data/train_chat.txt \
+    --epochs 20 \
+    --batch-size 4 \
+    --checkpoint-dir /content/drive/MyDrive/goktugGPT/checkpoints \
+    --resume
+```
+
+Checkpoints are saved to Google Drive, so progress is never lost.
+
+### Download trained model to local
+
+After training, download from Google Drive:
+- Go to `drive.google.com` → `MyDrive/goktugGPT/checkpoints/`
+- Download `best_model.pt` and `tokenizer.json`
+- Place them in your local `goktugGPT/checkpoints/` folder
 
 ---
 

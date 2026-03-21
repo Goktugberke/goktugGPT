@@ -23,7 +23,7 @@ import torch
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Chat with goktugGPT in the terminal")
-    parser.add_argument("--config", choices=["tiny", "default", "medium"], default="tiny")
+    parser.add_argument("--config", choices=["tiny", "default", "medium", "large"], default="tiny")
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to checkpoint file")
     parser.add_argument("--no-thinking", action="store_true", help="Disable thinking stage")
     parser.add_argument("--temperature", type=float, default=0.7)
@@ -71,7 +71,7 @@ def _find_checkpoint(checkpoint_dir: str):
 def main():
     args = parse_args()
 
-    from config import ModelConfig, TinyConfig, MediumConfig
+    from config import ModelConfig, TinyConfig, MediumConfig, LargeConfig
     from src.tokenizer import BPETokenizer
     from src.model import GoktugGPT
     from src.thinking import ThinkingEngine
@@ -80,6 +80,8 @@ def main():
         config = TinyConfig()
     elif args.config == "medium":
         config = MediumConfig()
+    elif args.config == "large":
+        config = LargeConfig()
     else:
         config = ModelConfig()
 

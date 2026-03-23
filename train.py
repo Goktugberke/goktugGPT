@@ -139,7 +139,17 @@ def main():
                 for line in f
                 if line.strip() and not line.startswith("#")
             ]
-        tokenizer.train(texts, special_tokens=config.special_tokens)
+        # Sample max 200K lines for tokenizer training — enough to capture
+        # all vocabulary patterns, drastically faster on large datasets.
+        import random
+        MAX_TOK_LINES = 300_000
+        if len(texts) > MAX_TOK_LINES:
+            print(f"  Sampling {MAX_TOK_LINES:,} / {len(texts):,} lines for tokenizer (faster, same quality)")
+            random.seed(42)
+            texts_for_tok = random.sample(texts, MAX_TOK_LINES)
+        else:
+            texts_for_tok = texts
+        tokenizer.train(texts_for_tok, special_tokens=config.special_tokens)
         tokenizer.save(tok_path)
 
     print(f"Tokenizer ready. Vocab size: {len(tokenizer)}")

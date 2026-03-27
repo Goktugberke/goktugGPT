@@ -163,7 +163,7 @@ class GoktugGPT(nn.Module):
         self,
         input_ids: torch.Tensor,
         max_new_tokens: int = 200,
-        temperature: float = 0.7,
+        temperature: float = 0.3,
         top_k: int = 30,
         top_p: float = 0.9,
         repetition_penalty: float = 1.3,

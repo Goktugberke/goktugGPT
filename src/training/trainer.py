@@ -168,12 +168,21 @@ class Trainer:
             payload = torch.load(resume_from, map_location=self.device)
             self.model.load_state_dict(payload["model_state"])
             extra = {k: v for k, v in payload.items() if k != "model_state"}
-            start_epoch = extra.get("epoch", 0)
             self.global_step = extra.get("global_step", 0)
             self.best_val_loss = extra.get("best_val_loss", float("inf"))
+            # Calculate correct start epoch from global_step
+            steps_per_epoch = len(self.train_dl)
+            start_epoch = self.global_step // steps_per_epoch
+            # Restore optimizer state (critical for LR schedule continuity)
+            if "optimizer_state" in extra and extra["optimizer_state"] is not None:
+                self.optimizer.load_state_dict(extra["optimizer_state"])
+                print("  Optimizer state restored.")
+            if self.use_amp and "scaler_state" in extra and extra["scaler_state"] is not None:
+                self.scaler.load_state_dict(extra["scaler_state"])
+                print("  AMP scaler state restored.")
             print(
                 f"Resumed from checkpoint: {resume_from}\n"
-                f"  Epoch: {start_epoch}  |  Global step: {self.global_step}  |"
+                f"  Epoch: {start_epoch + 1}  |  Global step: {self.global_step}  |"
                 f"  Best val loss so far: {self.best_val_loss:.4f}"
             )
 
@@ -190,8 +199,13 @@ class Trainer:
         self.model.train()
         t0 = time.time()
 
+        # How many steps into the current epoch we already completed
+        steps_per_epoch = len(self.train_dl)
+        skip_batches = self.global_step % steps_per_epoch
+
         for epoch in range(start_epoch, self.config.max_epochs):
             epoch_loss = 0.0
+            n_batches_counted = 0
             pbar = tqdm(
                 self.train_dl,
                 desc=f"Epoch {epoch+1}/{self.config.max_epochs}",
@@ -199,6 +213,9 @@ class Trainer:
             )
 
             for batch_idx, (x, y) in enumerate(pbar):
+                # Skip batches already completed in this epoch (resume case)
+                if skip_batches > 0 and batch_idx < skip_batches:
+                    continue
                 x, y = x.to(self.device), y.to(self.device)
 
                 # Update LR
@@ -223,6 +240,7 @@ class Trainer:
 
                 loss_val = loss.item()
                 epoch_loss += loss_val
+                n_batches_counted += 1
                 self.global_step += 1
                 self.train_losses.append((self.global_step, loss_val))
 
@@ -253,10 +271,12 @@ class Trainer:
                 if self.global_step % self.config.save_interval == 0:
                     self._save(f"checkpoint_step_{self.global_step}.pt", epoch)
 
-            avg_epoch_loss = epoch_loss / len(self.train_dl)
+            avg_epoch_loss = epoch_loss / max(1, n_batches_counted)
             print(
                 f"Epoch {epoch+1} done | avg_loss={avg_epoch_loss:.4f}"
             )
+            # Only skip batches for the first resumed epoch
+            skip_batches = 0
 
         # Final save
         self._save("final_model.pt", self.config.max_epochs - 1)
@@ -276,6 +296,8 @@ class Trainer:
                 "epoch": epoch,
                 "global_step": self.global_step,
                 "best_val_loss": self.best_val_loss,
+                "optimizer_state": self.optimizer.state_dict(),
+                "scaler_state": self.scaler.state_dict() if self.use_amp else None,
                 "config": {
                     "vocab_size": self.config.vocab_size,
                     "n_embed": self.config.n_embed,

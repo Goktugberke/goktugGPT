@@ -78,17 +78,21 @@ class TinyConfig(ModelConfig):
 
 @dataclass
 class MediumConfig(ModelConfig):
-    """Medium config — good balance of quality and speed. Needs GPU (4GB+ VRAM)."""
+    """Medium config — good balance of quality and speed. Needs GPU (4GB+ VRAM).
+    Designed for use with data/train_clean.txt (Dolly + Alpaca + synthetic QA).
+    Run prepare_data.py first to generate the training data.
+    """
     vocab_size: int = 16000
     n_embed: int = 512
     n_head: int = 8
     n_layer: int = 8
-    max_seq_len: int = 1024
+    max_seq_len: int = 512   # 512 is enough for QA; reduces memory vs 1024
     batch_size: int = 16
-    max_epochs: int = 50
-    warmup_steps: int = 400
+    max_epochs: int = 80     # more epochs — dataset is larger now
+    warmup_steps: int = 500  # longer warmup for stability on more data
     eval_interval: int = 500
     save_interval: int = 1000
+    data_path: str = "data/train_clean.txt"
 
 
 @dataclass

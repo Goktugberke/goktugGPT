@@ -49,6 +49,12 @@ def parse_args():
         default="checkpoints",
         help="Directory to save checkpoints",
     )
+    parser.add_argument(
+        "--val-data",
+        type=str,
+        default=None,
+        help="Path to a dedicated validation data file (recommended with prepare_data.py)",
+    )
     return parser.parse_args()
 
 
@@ -169,6 +175,7 @@ def main():
         tokenizer=tokenizer,
         block_size=config.max_seq_len,
         batch_size=config.batch_size,
+        val_file_path=args.val_data,
     )
 
     # --- Step 3: Model ---

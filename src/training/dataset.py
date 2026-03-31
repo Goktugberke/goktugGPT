@@ -126,10 +126,27 @@ def build_dataloaders(
     batch_size: int = 8,
     val_fraction: float = 0.05,
     num_workers: int = 0,
+    val_file_path: str = None,
 ) -> Tuple[DataLoader, DataLoader]:
-    """Convenience function to create train and validation DataLoaders."""
-    train_ds = ConversationDataset(file_path, tokenizer, block_size, "train", val_fraction)
-    val_ds = ConversationDataset(file_path, tokenizer, block_size, "val", val_fraction)
+    """Convenience function to create train and validation DataLoaders.
+
+    Args:
+        val_file_path: Optional path to a dedicated validation file. When
+                       provided the validation set is loaded from this file
+                       instead of being split from file_path.  This avoids
+                       the model seeing validation examples during training.
+    """
+    train_ds = ConversationDataset(
+        file_path, tokenizer, block_size,
+        split="train", val_fraction=val_fraction if val_file_path is None else 0.0,
+    )
+
+    if val_file_path is not None:
+        # Use a dedicated validation file — split="train" loads the whole file
+        val_ds = ConversationDataset(val_file_path, tokenizer, block_size, split="train", val_fraction=0.0)
+        print(f"Validation data loaded from separate file: {val_file_path}")
+    else:
+        val_ds = ConversationDataset(file_path, tokenizer, block_size, "val", val_fraction)
 
     train_dl = DataLoader(
         train_ds,

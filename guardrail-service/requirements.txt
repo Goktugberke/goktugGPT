@@ -1,0 +1,7 @@
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+transformers>=4.37.0
+torch>=2.2.0
+detoxify>=0.5.2
+regex>=2023.12.25

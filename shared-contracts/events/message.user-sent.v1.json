@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://goktug.platform/events/message.user-sent.v1.json",
+  "title": "message.user-sent.v1",
+  "description": "Kullanıcı yeni bir mesaj gönderdi (DB'ye yazıldı). Producer: conversation-service (Outbox pattern üzerinden). Subscribers: inference-orchestrator (akış başlat), telemetry-consumer.",
+  "type": "object",
+  "required": ["messageId", "chatId", "userId", "text", "createdAt"],
+  "properties": {
+    "messageId":      { "type": "string", "format": "uuid" },
+    "chatId":         { "type": "string", "format": "uuid" },
+    "userId":         { "type": "string", "format": "uuid" },
+    "text":           { "type": "string", "maxLength": 32000 },
+    "modelHint":      { "type": ["string", "null"], "description": "Kullanıcının istediği model (router-service tavsiyeyi aşabilir)" },
+    "attachmentIds":  {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" },
+      "description": "asset-service'teki asset ID'leri"
+    },
+    "idempotencyKey": { "type": "string" },
+    "createdAt":      { "type": "string", "format": "date-time" }
+  }
+}

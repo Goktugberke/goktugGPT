@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://goktug.platform/events/asset.uploaded.v1.json",
+  "title": "asset.uploaded.v1",
+  "description": "Bir dosya MinIO/S3'e başarıyla yüklendi ve doğrulandı. Producer: asset-service. Subscribers: multimodal-pipeline (Faz 2 — OCR/STT işle), telemetry-consumer.",
+  "type": "object",
+  "required": ["assetId", "userId", "filename", "mimeType", "sizeBytes", "storagePath", "uploadedAt"],
+  "properties": {
+    "assetId":      { "type": "string", "format": "uuid" },
+    "userId":       { "type": "string", "format": "uuid" },
+    "chatId":       { "type": ["string", "null"], "format": "uuid" },
+    "filename":     { "type": "string" },
+    "mimeType":     { "type": "string" },
+    "sizeBytes":    { "type": "integer", "minimum": 0 },
+    "storagePath":  { "type": "string", "description": "MinIO bucket içindeki obje yolu" },
+    "checksumSha256": { "type": "string" },
+    "uploadedAt":   { "type": "string", "format": "date-time" }
+  }
+}

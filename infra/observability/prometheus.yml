@@ -1,0 +1,50 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Spring Boot Actuator endpointleri (her servis Micrometer ile expose eder)
+  - job_name: api-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["api-gateway:8080"]
+
+  - job_name: identity-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["identity-service:8081"]
+
+  - job_name: conversation-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["conversation-service:8082"]
+
+  - job_name: inference-orchestrator
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["inference-orchestrator:8083"]
+
+  - job_name: asset-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["asset-service:8084"]
+
+  - job_name: billing-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["billing-service:8085"]
+
+  # Python servisleri prometheus_client expose eder
+  - job_name: inference-worker-goktug
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["inference-worker-goktug:9001"]
+
+  - job_name: guardrail-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["guardrail-service:9003"]

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://goktug.platform/events/envelope.v1.json",
+  "title": "Event Envelope",
+  "description": "Tüm Kafka eventlerinin sarmalayıcı (envelope) yapısı. Producer'lar bu yapıyı doldurur; payload alanı event'e özeldir.",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "payload"],
+  "properties": {
+    "eventId":    { "type": "string", "format": "uuid" },
+    "eventType":  { "type": "string", "pattern": "^[a-z]+(\\.[a-z-]+)+\\.v\\d+$" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer":   { "type": "string", "description": "Event'i yayınlayan servis adı" },
+    "traceId":    { "type": "string", "description": "OpenTelemetry trace ID — distributed tracing için" },
+    "userId":     { "type": ["string", "null"], "description": "İlgili kullanıcı (varsa)" },
+    "payload":    { "type": "object" }
+  }
+}

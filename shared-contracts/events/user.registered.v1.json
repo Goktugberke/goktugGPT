@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://goktug.platform/events/user.registered.v1.json",
+  "title": "user.registered.v1",
+  "description": "Yeni bir kullanıcı kayıt oldu. Producer: identity-service. Subscribers: billing-service (free plan oluştur), notification-service (welcome email), telemetry-consumer.",
+  "type": "object",
+  "required": ["userId", "email", "registeredAt"],
+  "properties": {
+    "userId":       { "type": "string", "format": "uuid" },
+    "email":        { "type": "string", "format": "email" },
+    "displayName":  { "type": "string" },
+    "registeredAt": { "type": "string", "format": "date-time" },
+    "source":       { "type": "string", "enum": ["self-service", "invite", "sso"] }
+  }
+}

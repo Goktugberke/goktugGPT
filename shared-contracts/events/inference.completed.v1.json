@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://goktug.platform/events/inference.completed.v1.json",
+  "title": "inference.completed.v1",
+  "description": "AI cevap üretimi başarıyla tamamlandı. Producer: inference-orchestrator. Subscribers: conversation-service (assistant message persist — Saga step), billing-service (usage düş), telemetry-consumer (RLHF için).",
+  "type": "object",
+  "required": ["jobId", "chatId", "userId", "messageId", "responseText", "tokenUsage", "completedAt"],
+  "properties": {
+    "jobId":        { "type": "string", "format": "uuid", "description": "Inference job ID — Saga state ile aynı" },
+    "chatId":       { "type": "string", "format": "uuid" },
+    "userId":       { "type": "string", "format": "uuid" },
+    "messageId":    { "type": "string", "format": "uuid", "description": "User mesajı (cevap verdiği)" },
+    "responseText": { "type": "string" },
+    "modelUsed":    { "type": "string", "description": "router-service'in seçtiği gerçek model" },
+    "tokenUsage": {
+      "type": "object",
+      "required": ["promptTokens", "completionTokens"],
+      "properties": {
+        "promptTokens":     { "type": "integer", "minimum": 0 },
+        "completionTokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "latencyMs":   { "type": "integer", "minimum": 0 },
+    "completedAt": { "type": "string", "format": "date-time" }
+  }
+}

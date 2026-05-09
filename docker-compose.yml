@@ -1,0 +1,501 @@
+# goktugGPT Platform — Local Development Stack
+#
+# Tüm altyapı + faz 1 servisleri tek komutla ayağa kaldırır.
+# Servisleri henüz iskeletini kurmadıysan sadece infra'yı kaldır:
+#   docker compose -f docker-compose.yml --profile infra up -d
+#
+# Hepsini ayağa kaldır:
+#   docker compose up -d --build
+#
+# Tek bir servis:
+#   docker compose up -d --build conversation-service
+#
+# UI'lara erişim:
+#   Keycloak:    http://localhost:8180   (admin / admin)
+#   MinIO:       http://localhost:9090   (minio / minio12345)
+#   Jaeger:      http://localhost:16686
+#   Prometheus:  http://localhost:9000
+#   Grafana:     http://localhost:3000   (admin / admin)
+#   Kafka UI:    http://localhost:8090
+#   API Gateway: http://localhost:8080
+
+name: goktuggpt-platform
+
+networks:
+  goktug-net:
+    driver: bridge
+
+volumes:
+  postgres-identity-data:
+  postgres-conversation-data:
+  postgres-inference-data:
+  postgres-asset-data:
+  postgres-billing-data:
+  postgres-keycloak-data:
+  redis-data:
+  minio-data:
+  kafka-data:
+  zookeeper-data:
+  elasticsearch-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+  # ============================================================
+  #  INFRA — DATABASES (Database-per-Service kuralı)
+  # ============================================================
+
+  postgres-identity:
+    image: postgres:16-alpine
+    profiles: ["infra", "all"]
+    environment:
+      POSTGRES_DB: identity_db
+      POSTGRES_USER: identity
+      POSTGRES_PASSWORD: identity_pw
+    volumes:
+      - postgres-identity-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity -d identity_db"]
+      interval: 5s
+      retries: 5
+
+  postgres-conversation:
+    image: postgres:16-alpine
+    profiles: ["infra", "all"]
+    environment:
+      POSTGRES_DB: conversation_db
+      POSTGRES_USER: conversation
+      POSTGRES_PASSWORD: conversation_pw
+    volumes:
+      - postgres-conversation-data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conversation -d conversation_db"]
+      interval: 5s
+      retries: 5
+
+  postgres-inference:
+    image: postgres:16-alpine
+    profiles: ["infra", "all"]
+    environment:
+      POSTGRES_DB: inference_db
+      POSTGRES_USER: inference
+      POSTGRES_PASSWORD: inference_pw
+    volumes:
+      - postgres-inference-data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks: [goktug-net]
+
+  postgres-asset:
+    image: postgres:16-alpine
+    profiles: ["infra", "all"]
+    environment:
+      POSTGRES_DB: asset_db
+      POSTGRES_USER: asset
+      POSTGRES_PASSWORD: asset_pw
+    volumes:
+      - postgres-asset-data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    networks: [goktug-net]
+
+  postgres-billing:
+    image: postgres:16-alpine
+    profiles: ["infra", "all"]
+    environment:
+      POSTGRES_DB: billing_db
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billing_pw
+    volumes:
+      - postgres-billing-data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+    networks: [goktug-net]
+
+  postgres-keycloak:
+    image: postgres:16-alpine
+    profiles: ["infra", "all"]
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_pw
+    volumes:
+      - postgres-keycloak-data:/var/lib/postgresql/data
+    networks: [goktug-net]
+
+  # ============================================================
+  #  INFRA — IAM
+  # ============================================================
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    profiles: ["infra", "all"]
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_pw
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8180
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
+    depends_on:
+      - postgres-keycloak
+    networks: [goktug-net]
+
+  # ============================================================
+  #  INFRA — CACHE / RATE LIMIT / SESSION
+  # ============================================================
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["infra", "all"]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks: [goktug-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  # ============================================================
+  #  INFRA — EVENT BUS (Kafka)
+  # ============================================================
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    profiles: ["infra", "all"]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+    networks: [goktug-net]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    profiles: ["infra", "all"]
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    ports:
+      - "9092:9092"
+    networks: [goktug-net]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    profiles: ["infra", "all"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    ports:
+      - "8090:8080"
+    depends_on:
+      - kafka
+    networks: [goktug-net]
+
+  # ============================================================
+  #  INFRA — BLOB STORAGE (S3-compatible)
+  # ============================================================
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["infra", "all"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio12345
+    ports:
+      - "9000:9000"   # S3 API
+      - "9090:9001"   # Web Console
+    volumes:
+      - minio-data:/data
+    networks: [goktug-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    profiles: ["infra", "all"]
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set local http://minio:9000 minio minio12345;
+      /usr/bin/mc mb -p local/gpt-assets || true;
+      /usr/bin/mc anonymous set download local/gpt-assets || true;
+      echo 'MinIO bucket gpt-assets ready';
+      "
+    networks: [goktug-net]
+
+  # ============================================================
+  #  INFRA — SEARCH (CQRS read model + log analytics)
+  # ============================================================
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    profiles: ["infra", "all"]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks: [goktug-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      retries: 5
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    profiles: ["infra", "all"]
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks: [goktug-net]
+
+  # ============================================================
+  #  INFRA — OBSERVABILITY (tracing + metrics)
+  # ============================================================
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    profiles: ["infra", "all"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    networks: [goktug-net]
+
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["infra", "all"]
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9099:9090"
+    networks: [goktug-net]
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["infra", "all"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks: [goktug-net]
+
+  # ============================================================
+  #  APPLICATION SERVICES — FAZ 1
+  # ============================================================
+  #  Not: her servis kendi Dockerfile'ı tamamlanınca aktive olur.
+  #  Şimdi build context tanımlanmış, içi boş olunca `docker compose
+  #  build api-gateway` hata verir — bu beklenen durumdur. Servisleri
+  #  scaffold ettikçe up edebilirsin.
+
+  api-gateway:
+    build: ./api-gateway
+    profiles: ["all"]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/goktuggpt
+      REDIS_HOST: redis
+      # OpenTelemetry — auto instrumentation via java agent
+      OTEL_SERVICE_NAME: api-gateway
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "1.0"
+    depends_on:
+      - keycloak
+      - redis
+      - jaeger
+    ports:
+      - "8080:8080"
+    networks: [goktug-net]
+
+  identity-service:
+    build: ./identity-service
+    profiles: ["all"]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres-identity:5432/identity_db
+      DB_USER: identity
+      DB_PASSWORD: identity_pw
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KAFKA_BOOTSTRAP: kafka:29092
+      OTEL_SERVICE_NAME: identity-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      - postgres-identity
+      - keycloak
+      - kafka
+      - jaeger
+    networks: [goktug-net]
+
+  conversation-service:
+    build: ./conversation-service
+    profiles: ["all"]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres-conversation:5432/conversation_db
+      DB_USER: conversation
+      DB_PASSWORD: conversation_pw
+      KAFKA_BOOTSTRAP: kafka:29092
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+      OTEL_SERVICE_NAME: conversation-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      - postgres-conversation
+      - kafka
+      - elasticsearch
+      - jaeger
+    networks: [goktug-net]
+
+  inference-orchestrator:
+    build: ./inference-orchestrator
+    profiles: ["all"]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres-inference:5432/inference_db
+      DB_USER: inference
+      DB_PASSWORD: inference_pw
+      KAFKA_BOOTSTRAP: kafka:29092
+      INFERENCE_WORKER_GOKTUG_URL: http://llm-server:9001
+      GUARDRAIL_URL: http://guardrail-service:9003
+      BILLING_URL: http://billing-service:8085
+      OTEL_SERVICE_NAME: inference-orchestrator
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      - postgres-inference
+      - kafka
+      - jaeger
+    networks: [goktug-net]
+
+  llm-server:
+    build:
+      context: ./llm-server
+      dockerfile: Dockerfile
+    profiles: ["all"]
+    environment:
+      MODEL_PATH: /models/best_model.pt
+      TOKENIZER_PATH: /models/tokenizer.json
+      DEVICE: cpu  # change to "cuda" if GPU available
+      VOCAB_SIZE: "16000"
+      N_EMBED: "512"
+      N_HEAD: "8"
+      N_LAYER: "8"
+      MAX_SEQ_LEN: "512"
+    volumes:
+      - ./llm-server/checkpoints:/models:ro
+    networks: [goktug-net]
+
+  asset-service:
+    build: ./asset-service
+    profiles: ["all"]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres-asset:5432/asset_db
+      DB_USER: asset
+      DB_PASSWORD: asset_pw
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: minio12345
+      KAFKA_BOOTSTRAP: kafka:29092
+      OTEL_SERVICE_NAME: asset-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      - postgres-asset
+      - minio
+      - kafka
+      - jaeger
+    networks: [goktug-net]
+  guardrail-service:
+    build: ./guardrail-service
+    profiles: ["all"]
+    ports:
+      - "9003:9003"
+    networks: [goktug-net]
+  router-service:
+    build: ./router-service
+    profiles: ["all"]
+    ports:
+      - "9002:9002"
+    networks: [goktug-net]
+  billing-service:
+    build: ./billing-service
+    profiles: ["all"]
+    ports:
+      - "8085:8080"
+    networks: [goktug-net]
+
+  telemetry-consumer:
+    build: ./telemetry-consumer
+    profiles: ["all"]
+    networks: [goktug-net]
+
+  notification-service:
+    build: ./notification-service
+    profiles: ["all"]
+    ports:
+      - "8087:8080"
+    networks: [goktug-net]

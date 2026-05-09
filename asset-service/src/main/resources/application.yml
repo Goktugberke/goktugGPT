@@ -1,0 +1,69 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: asset-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5436/asset_db}
+    username: ${DB_USER:asset}
+    password: ${DB_PASSWORD:asset_pw}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+
+minio:
+  endpoint:   ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minio}
+  secret-key: ${MINIO_SECRET_KEY:minio12345}
+  bucket:     gpt-assets
+  region:     us-east-1
+  presigned-url-ttl-min: 15
+
+asset:
+  max-size-bytes: 52428800   # 50 MB
+  allowed-mime-types:
+    - image/png
+    - image/jpeg
+    - image/webp
+    - image/gif
+    - application/pdf
+    - text/plain
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      minio:
+        slidingWindowSize: 30
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        slowCallDurationThreshold: 2s
+        slowCallRateThreshold: 80
+  retry:
+    instances:
+      minio:
+        maxAttempts: 3
+        waitDuration: 300ms
+        exponentialBackoffMultiplier: 2
+  bulkhead:
+    instances:
+      minio:
+        maxConcurrentCalls: 50
+        maxWaitDuration: 100ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+
+otel:
+  exporter:
+    otlp:
+      endpoint: http://jaeger:4317
+  service:
+    name: asset-service

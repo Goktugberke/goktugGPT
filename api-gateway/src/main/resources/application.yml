@@ -1,0 +1,88 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # JWKS endpoint — Keycloak realm public keys
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/goktuggpt}
+
+  cloud:
+    gateway:
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: 10   # default: 10 req/s
+            redis-rate-limiter.burstCapacity: 20
+            key-resolver: "#{@userKeyResolver}"
+        # OpenTelemetry için trace context propagasyonu otomatik (micrometer-tracing)
+
+      routes:
+        - id: identity-service
+          uri: http://identity-service:8081
+          predicates:
+            - Path=/api/v1/auth/**, /api/v1/users/**
+
+        - id: conversation-service
+          uri: http://conversation-service:8082
+          predicates:
+            - Path=/api/v1/chats/**
+
+        - id: inference-orchestrator
+          uri: http://inference-orchestrator:8083
+          predicates:
+            - Path=/api/v1/inference/**
+          # SSE/streaming için response timeout büyük tut
+          metadata:
+            response-timeout: 600000   # 10 dk
+
+        - id: asset-service
+          uri: http://asset-service:8084
+          predicates:
+            - Path=/api/v1/assets/**
+
+        - id: billing-service
+          uri: http://billing-service:8085
+          predicates:
+            - Path=/api/v1/billing/**
+
+# Resilience4j circuit breaker — downstream servisler için
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        slidingWindowSize: 50
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, gateway
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# OpenTelemetry → Jaeger
+otel:
+  exporter:
+    otlp:
+      endpoint: http://jaeger:4317
+  service:
+    name: api-gateway
+
+logging:
+  pattern:
+    level: "%5p [traceId=%X{traceId:-} spanId=%X{spanId:-}]"

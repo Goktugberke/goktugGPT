@@ -1,0 +1,77 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: identity-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/identity_db}
+    username: ${DB_USER:identity}
+    password: ${DB_PASSWORD:identity_pw}
+    hikari:
+      maximum-pool-size: 10
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all                # at-least-once delivery
+      enable-idempotence: true # exactly-once-ish on producer side
+
+# Keycloak admin client config (Faz 1: identity-service Keycloak'ı yönetir)
+keycloak:
+  base-url: ${KEYCLOAK_BASE_URL:http://localhost:8180}
+  realm: goktuggpt
+  admin-client-id: goktuggpt-internal
+  admin-client-secret: ${KEYCLOAK_ADMIN_SECRET:internal-dev-secret-change-in-prod}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      keycloak:
+        slidingWindowSize: 50
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        slowCallDurationThreshold: 3s
+        slowCallRateThreshold: 80
+  retry:
+    instances:
+      keycloak:
+        maxAttempts: 3
+        waitDuration: 200ms
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException$ServiceUnavailable
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+  timelimiter:
+    instances:
+      keycloak:
+        timeoutDuration: 5s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+otel:
+  exporter:
+    otlp:
+      endpoint: http://jaeger:4317
+  service:
+    name: identity-service

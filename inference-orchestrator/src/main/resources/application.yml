@@ -1,0 +1,78 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: inference-orchestrator
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5435/inference_db}
+    username: ${DB_USER:inference}
+    password: ${DB_PASSWORD:inference_pw}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+    consumer:
+      group-id: inference-orchestrator
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+# Downstream service URL'leri
+downstream:
+  guardrail:        ${GUARDRAIL_URL:http://localhost:9003}
+  router:           ${ROUTER_URL:http://localhost:9002}
+  billing:          ${BILLING_URL:http://localhost:8085}
+  worker-goktug:    ${INFERENCE_WORKER_GOKTUG_URL:http://localhost:9001}
+
+# Resilience4j — her downstream için ayrı circuit breaker + bulkhead
+resilience4j:
+  circuitbreaker:
+    instances:
+      guardrail:
+        slidingWindowSize: 50
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        slowCallDurationThreshold: 2s
+      worker-goktug:
+        slidingWindowSize: 30
+        failureRateThreshold: 60
+        waitDurationInOpenState: 30s
+        slowCallDurationThreshold: 30s   # streaming büyük ama hangup zorunlu
+  retry:
+    instances:
+      guardrail:
+        maxAttempts: 2
+        waitDuration: 200ms
+      billing:
+        maxAttempts: 3
+        waitDuration: 100ms
+        exponentialBackoffMultiplier: 2
+  bulkhead:
+    instances:
+      worker-goktug:
+        maxConcurrentCalls: 100         # GPU worker overload'ı önle
+        maxWaitDuration: 0s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, circuitbreakers, retries
+
+otel:
+  exporter:
+    otlp:
+      endpoint: http://jaeger:4317
+  service:
+    name: inference-orchestrator

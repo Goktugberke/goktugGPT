@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -42,28 +43,36 @@ public class IdentityService {
      */
     @Transactional
     public TokenResponse register(RegisterRequest req) {
+        log.info("register: START email={}", req.email());
+
         if (profileRepository.existsByEmail(req.email())) {
+            log.info("register: email already registered");
             throw new IdentityException(HttpStatus.CONFLICT, "Email already registered");
         }
+        log.info("register: email check passed");
 
         UUID userId;
         try {
+            log.info("register: calling Keycloak createUser...");
             userId = keycloak.createUser(req.email(), req.password(), req.displayName())
-                .block();
+                .block(Duration.ofSeconds(15));
+            log.info("register: Keycloak createUser returned userId={}", userId);
         } catch (Exception ex) {
-            log.error("Keycloak createUser failed", ex);
+            log.error("register: Keycloak createUser failed: {}", ex.toString(), ex);
             throw new IdentityException(HttpStatus.BAD_REQUEST, "Could not create user: " + ex.getMessage());
         }
         if (userId == null) {
             throw new IdentityException(HttpStatus.INTERNAL_SERVER_ERROR, "Keycloak returned no user id");
         }
 
+        log.info("register: saving profile");
         ProfileEntity profile = ProfileEntity.builder()
             .userId(userId)
             .email(req.email())
             .displayName(req.displayName())
             .build();
         profileRepository.save(profile);
+        log.info("register: profile saved");
 
         // user.registered.v1 outbox event
         ObjectNode payload = objectMapper.createObjectNode();
@@ -81,14 +90,18 @@ public class IdentityService {
         innerPayload.put("source", "self-service");
         payload.set("payload", innerPayload);
 
+        log.info("register: writing outbox event");
         outboxRepository.save(OutboxEntity.builder()
             .aggregateId(userId)
             .eventType("user.registered.v1")
             .payload((JsonNode) payload)
             .build());
+        log.info("register: outbox saved, auto-login starting");
 
         // Auto-login after register
-        return loginInternal(req.email(), req.password(), userId);
+        TokenResponse t = loginInternal(req.email(), req.password(), userId);
+        log.info("register: DONE userId={}", userId);
+        return t;
     }
 
     public TokenResponse login(LoginRequest req) {
@@ -99,7 +112,10 @@ public class IdentityService {
 
     private TokenResponse loginInternal(String email, String password, UUID userId) {
         try {
-            KeycloakClient.TokenResponse kc = keycloak.loginWithPassword(email, password).block();
+            log.info("loginInternal: calling Keycloak loginWithPassword email={}", email);
+            KeycloakClient.TokenResponse kc = keycloak.loginWithPassword(email, password)
+                .block(Duration.ofSeconds(15));
+            log.info("loginInternal: Keycloak login returned, token present={}", kc != null);
             if (kc == null) {
                 throw new IdentityException(HttpStatus.UNAUTHORIZED, "Login failed");
             }
@@ -108,7 +124,7 @@ public class IdentityService {
                 userId.toString(), email);
         } catch (IdentityException e) { throw e; }
         catch (Exception ex) {
-            log.warn("Keycloak login failed: {}", ex.getMessage());
+            log.warn("Keycloak login failed: {}", ex.toString(), ex);
             throw new IdentityException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
     }

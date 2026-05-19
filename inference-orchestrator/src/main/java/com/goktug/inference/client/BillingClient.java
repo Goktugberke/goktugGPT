@@ -25,7 +25,7 @@ public class BillingClient {
     private final boolean enabled;
 
     public BillingClient(
-            @Qualifier("billingClient") WebClient client,
+            @Qualifier("billingWebClient") WebClient client,
             CircuitBreakerRegistry cbRegistry,
             @Value("${billing.enabled:false}") boolean enabled
     ) {

@@ -27,20 +27,28 @@ public class WebClientConfig {
     @Value("${downstream.billing}")
     private String billingBaseUrl;
 
+    @Value("${downstream.router}")
+    private String routerBaseUrl;
+
     @Value("${downstream.worker-goktug}")
     private String workerGoktugBaseUrl;
 
-    @Bean(name = "guardrailClient")
+    @Bean(name = "guardrailWebClient")
     public WebClient guardrailClient() {
         return webClient(guardrailBaseUrl, Duration.ofSeconds(3));
     }
 
-    @Bean(name = "billingClient")
+    @Bean(name = "billingWebClient")
     public WebClient billingClient() {
         return webClient(billingBaseUrl, Duration.ofSeconds(2));
     }
 
-    @Bean(name = "workerGoktugClient")
+    @Bean(name = "routerWebClient")
+    public WebClient routerClient() {
+        return webClient(routerBaseUrl, Duration.ofSeconds(2));
+    }
+
+    @Bean(name = "workerGoktugWebClient")
     public WebClient workerGoktugClient() {
         // Streaming için uzun timeout, hangup'a izin ver
         return webClient(workerGoktugBaseUrl, Duration.ofSeconds(120));

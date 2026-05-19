@@ -33,7 +33,7 @@ public class InferenceWorkerClient {
     private final ObjectMapper objectMapper;
 
     public InferenceWorkerClient(
-            @Qualifier("workerGoktugClient") WebClient client,
+            @Qualifier("workerGoktugWebClient") WebClient client,
             CircuitBreakerRegistry cbRegistry,
             ObjectMapper objectMapper
     ) {

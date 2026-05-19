@@ -334,7 +334,9 @@ services:
   #  scaffold ettikçe up edebilirsin.
 
   api-gateway:
-    build: ./api-gateway
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
     profiles: ["all"]
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -344,7 +346,7 @@ services:
       OTEL_SERVICE_NAME: api-gateway
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: none
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
       OTEL_TRACES_SAMPLER: parentbased_traceidratio
@@ -358,7 +360,9 @@ services:
     networks: [goktug-net]
 
   identity-service:
-    build: ./identity-service
+    build:
+      context: .
+      dockerfile: identity-service/Dockerfile
     profiles: ["all"]
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -370,7 +374,7 @@ services:
       OTEL_SERVICE_NAME: identity-service
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: none
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
@@ -378,10 +382,14 @@ services:
       - keycloak
       - kafka
       - jaeger
+    ports:
+      - "8081:8081"
     networks: [goktug-net]
 
   conversation-service:
-    build: ./conversation-service
+    build:
+      context: .
+      dockerfile: conversation-service/Dockerfile
     profiles: ["all"]
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -393,7 +401,7 @@ services:
       OTEL_SERVICE_NAME: conversation-service
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: none
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
@@ -401,10 +409,14 @@ services:
       - kafka
       - elasticsearch
       - jaeger
+    ports:
+      - "8082:8082"
     networks: [goktug-net]
 
   inference-orchestrator:
-    build: ./inference-orchestrator
+    build:
+      context: .
+      dockerfile: inference-orchestrator/Dockerfile
     profiles: ["all"]
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -414,17 +426,20 @@ services:
       KAFKA_BOOTSTRAP: kafka:29092
       INFERENCE_WORKER_GOKTUG_URL: http://llm-server:9001
       GUARDRAIL_URL: http://guardrail-service:9003
-      BILLING_URL: http://billing-service:8085
+      ROUTER_URL: http://router-service:9002
+      BILLING_URL: http://billing-service:8080
       OTEL_SERVICE_NAME: inference-orchestrator
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: none
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
       - postgres-inference
       - kafka
       - jaeger
+    ports:
+      - "8083:8083"
     networks: [goktug-net]
 
   llm-server:
@@ -443,10 +458,14 @@ services:
       MAX_SEQ_LEN: "512"
     volumes:
       - ./llm-server/checkpoints:/models:ro
+    ports:
+      - "9001:9001"
     networks: [goktug-net]
 
   asset-service:
-    build: ./asset-service
+    build:
+      context: .
+      dockerfile: asset-service/Dockerfile
     profiles: ["all"]
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -460,7 +479,7 @@ services:
       OTEL_SERVICE_NAME: asset-service
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: none
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
@@ -472,30 +491,100 @@ services:
   guardrail-service:
     build: ./guardrail-service
     profiles: ["all"]
+    environment:
+      USE_ML_MODELS: "${GUARDRAIL_USE_ML:-false}"
+      OTEL_SERVICE_NAME: guardrail-service
     ports:
       - "9003:9003"
     networks: [goktug-net]
+
   router-service:
     build: ./router-service
     profiles: ["all"]
+    environment:
+      USE_EMBEDDINGS: "${ROUTER_USE_EMBEDDINGS:-false}"
+      OTEL_SERVICE_NAME: router-service
     ports:
       - "9002:9002"
     networks: [goktug-net]
+
   billing-service:
-    build: ./billing-service
+    build:
+      context: .
+      dockerfile: billing-service/Dockerfile
     profiles: ["all"]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres-billing
+      DB_PORT: "5432"
+      DB_NAME: billing_db
+      DB_USER: billing
+      DB_PASSWORD: billing_pw
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      KAFKA_BOOTSTRAP: kafka:29092
+      OTEL_SERVICE_NAME: billing-service
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      - postgres-billing
+      - redis
+      - kafka
+      - jaeger
     ports:
       - "8085:8080"
     networks: [goktug-net]
 
   telemetry-consumer:
-    build: ./telemetry-consumer
+    build:
+      context: .
+      dockerfile: telemetry-consumer/Dockerfile
     profiles: ["all"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+      ES_ENABLED: "true"
+      ES_INDEX_PREFIX: telemetry
+      COLD_STORAGE_ENABLED: "true"
+      COLD_STORAGE_ENDPOINT: http://minio:9000
+      COLD_STORAGE_REGION: us-east-1
+      COLD_STORAGE_BUCKET: goktug-telemetry
+      COLD_STORAGE_ACCESS_KEY: minio
+      COLD_STORAGE_SECRET_KEY: minio12345
+      OTEL_SERVICE_NAME: telemetry-consumer
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      - kafka
+      - elasticsearch
+      - minio
     networks: [goktug-net]
 
   notification-service:
-    build: ./notification-service
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
     profiles: ["all"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      MAIL_FROM: "${MAIL_FROM:-no-reply@goktug.dev}"
+      OTEL_SERVICE_NAME: notification-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_TRACES_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    depends_on:
+      - kafka
     ports:
       - "8087:8080"
     networks: [goktug-net]
+

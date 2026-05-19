@@ -1,0 +1,48 @@
+# Build artifacts
+**/target/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+**/node_modules/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Git + docs (services don't need these at build time)
+.git/
+.gitignore
+docs/
+*.md
+
+# Local LLM training data and checkpoints (too big for build context;
+# llm-server mounts checkpoints as a volume at runtime)
+llm-server/checkpoints/*.pt
+llm-server/data/
+llm-server/.venv/
+data/
+checkpoints/
+
+# Top-level non-service folders that no Dockerfile touches
+4grands/
+docs/
+infra/
+scripts/
+
+# Old monolith files that linger in the root
+prepare_data.py
+kaggle_train.py
+kaggle-gpt-train.ipynb
+train.py
+chat.py
+gui.py
+config.py
+requirements.txt
+deploy_goktug.ps1
+Solution.java
+ROADMAP.md
+README.md

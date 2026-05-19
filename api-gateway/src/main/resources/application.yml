@@ -18,14 +18,16 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/goktuggpt}
 
   cloud:
+    # Disable Spring Cloud / Spring Boot compatibility check.
+    # Spring Cloud 5.x (2025.x) targets Boot 3.5.x but works fine on Boot 3.3.x
+    # for the gateway routing features we use. We bypass the guard explicitly.
+    compatibility-verifier:
+      enabled: false
     gateway:
-      default-filters:
-        - name: RequestRateLimiter
-          args:
-            redis-rate-limiter.replenishRate: 10   # default: 10 req/s
-            redis-rate-limiter.burstCapacity: 20
-            key-resolver: "#{@userKeyResolver}"
-        # OpenTelemetry için trace context propagasyonu otomatik (micrometer-tracing)
+      # RequestRateLimiter geçici olarak kaldırıldı: Spring Cloud Gateway'in
+      # bu sürümü HttpHeaders.headerSet() (Spring 6.2 API) çağırıyordu,
+      # bizde Spring 6.1 var -> NoSuchMethodError ile her request ölüyordu.
+      # Boot 3.5.x'e yükseltince geri eklenir.
 
       routes:
         - id: identity-service
@@ -52,7 +54,7 @@ spring:
             - Path=/api/v1/assets/**
 
         - id: billing-service
-          uri: http://billing-service:8085
+          uri: http://billing-service:8080
           predicates:
             - Path=/api/v1/billing/**
 

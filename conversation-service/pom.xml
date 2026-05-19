@@ -51,11 +51,8 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.vladmihalcea</groupId>
-            <artifactId>hibernate-types-60</artifactId>
-            <version>2.21.1</version>
-        </dependency>
+        <!-- Removed legacy vladmihalcea/hibernate-types-60 — incompatible with
+             Hibernate 6.5. UUID array handling now goes through hypersistence-utils-hibernate-63. -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>

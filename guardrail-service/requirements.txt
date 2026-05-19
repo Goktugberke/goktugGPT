@@ -1,7 +1,12 @@
-fastapi>=0.109.0
-uvicorn>=0.27.0
+# torch is installed separately in Dockerfile from the CPU-only index.
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
-transformers>=4.37.0
-torch>=2.2.0
-detoxify>=0.5.2
 regex>=2023.12.25
+prometheus-client>=0.20.0
+
+# Optional ML models — pulled into the image so USE_ML_MODELS=true at
+# runtime can enable them without a rebuild.
+transformers>=4.37.0
+detoxify>=0.5.2

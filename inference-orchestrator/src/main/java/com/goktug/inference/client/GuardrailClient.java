@@ -24,7 +24,7 @@ public class GuardrailClient {
     private final boolean enabled;
 
     public GuardrailClient(
-            @Qualifier("guardrailClient") WebClient client,
+            @Qualifier("guardrailWebClient") WebClient client,
             CircuitBreakerRegistry cbRegistry,
             @org.springframework.beans.factory.annotation.Value("${guardrail.enabled:false}") boolean enabled
     ) {
@@ -44,7 +44,12 @@ public class GuardrailClient {
             .bodyValue(Map.of("text", text))
             .retrieve()
             .bodyToMono(GuardrailResponse.class)
-            .map(r -> new GuardrailResult(r.safe(), r.blocked_reason()))
+            .map(r -> new GuardrailResult(
+                r.safe(),
+                r.categories() == null || r.categories().isEmpty()
+                    ? r.detail()
+                    : String.join(",", r.categories())
+            ))
             .transformDeferred(CircuitBreakerOperator.of(cbRegistry.circuitBreaker("guardrail")))
             .onErrorResume(ex -> {
                 log.warn("Guardrail call failed, fail-open: {}", ex.getMessage());
@@ -53,6 +58,12 @@ public class GuardrailClient {
     }
 
     public record GuardrailResult(boolean safe, String reason) {}
-    public record GuardrailResponse(boolean safe, Map<String, Double> categories, String blocked_reason) {}
+    public record GuardrailResponse(
+        boolean safe,
+        java.util.List<String> categories,
+        Double score,
+        Boolean degraded,
+        String detail
+    ) {}
 }
 

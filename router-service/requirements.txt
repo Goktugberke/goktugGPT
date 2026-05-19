@@ -1,5 +1,10 @@
-fastapi>=0.109.0
-uvicorn>=0.27.0
+# torch is installed separately in Dockerfile from the CPU-only index.
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
+prometheus-client>=0.20.0
+numpy>=1.24.0
+
+# Optional embedding model — loaded only when USE_EMBEDDINGS=true
 sentence-transformers>=2.3.1
-torch>=2.2.0

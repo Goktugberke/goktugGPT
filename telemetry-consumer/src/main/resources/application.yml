@@ -1,5 +1,42 @@
-﻿server:
+server:
   port: 8080
+
 spring:
   application:
     name: telemetry-consumer
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka:29092}
+    consumer:
+      group-id: telemetry-consumer
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.value.default.type: com.fasterxml.jackson.databind.JsonNode
+        spring.json.trusted.packages: "*"
+
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URI:http://elasticsearch:9200}
+    connection-timeout: 5s
+    socket-timeout: 10s
+
+telemetry:
+  es:
+    enabled: ${ES_ENABLED:true}
+    index-prefix: ${ES_INDEX_PREFIX:telemetry}
+  cold-storage:
+    enabled: ${COLD_STORAGE_ENABLED:true}
+    endpoint: ${COLD_STORAGE_ENDPOINT:http://minio:9000}
+    region: ${COLD_STORAGE_REGION:us-east-1}
+    bucket: ${COLD_STORAGE_BUCKET:goktug-telemetry}
+    access-key: ${COLD_STORAGE_ACCESS_KEY:minio}
+    secret-key: ${COLD_STORAGE_SECRET_KEY:minio12345}
+    batch-size: ${COLD_STORAGE_BATCH_SIZE:500}
+    flush-interval-ms: ${COLD_STORAGE_FLUSH_MS:30000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

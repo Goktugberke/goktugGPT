@@ -43,13 +43,19 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Versions -->
-        <spring-cloud.version>2025.0.0</spring-cloud.version>
+        <!-- Spring Cloud 2023.0.x is the line compatible with Spring Boot 3.3.x.
+             2025.0.0 requires Boot 3.5.x and triggers the compatibility verifier. -->
+        <spring-cloud.version>2023.0.4</spring-cloud.version>
         <resilience4j.version>2.2.0</resilience4j.version>
         <opentelemetry.version>1.31.0</opentelemetry.version>
-        <springdoc.version>2.8.9</springdoc.version>
+        <!-- springdoc 2.8.x needs Spring 6.2 (= Boot 3.4+). For Boot 3.3.x use 2.6.x. -->
+        <springdoc.version>2.6.0</springdoc.version>
         <testcontainers.version>1.20.4</testcontainers.version>
         <jib.version>3.4.3</jib.version>
         <hypersistence-utils.version>3.8.2</hypersistence-utils.version>
+        <!-- Lombok 1.18.34 supports Java 21. Required for @RequiredArgsConstructor
+             to work via the maven-compiler-plugin annotationProcessorPaths below. -->
+        <lombok.version>1.18.34</lombok.version>
     </properties>
 
     <dependencyManagement>

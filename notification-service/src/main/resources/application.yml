@@ -1,5 +1,40 @@
-﻿server:
+server:
   port: 8080
+
 spring:
   application:
     name: notification-service
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka:29092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.value.default.type: com.fasterxml.jackson.databind.JsonNode
+        spring.json.trusted.packages: "*"
+
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+notification:
+  mail:
+    from: ${MAIL_FROM:no-reply@goktug.dev}
+    enabled: ${MAIL_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: goktug-platform
+description: >-
+  goktugGPT application services (Java + Python) as a single umbrella Helm chart.
+  Infra dependencies (PostgreSQL, Kafka, Keycloak, Redis, MinIO, Elasticsearch)
+  are expected to be provided externally in-cluster (operators / managed services /
+  separate charts) and wired via the shared ConfigMap + Secret.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - goktuggpt
+  - microservices
+  - llm
+maintainers:
+  - name: Göktuğ Berke Güngören

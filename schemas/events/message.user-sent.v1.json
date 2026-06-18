@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://goktug.dev/schemas/events/message.user-sent.v1.json",
+  "title": "message.user-sent.v1",
+  "description": "conversation-service kullanıcı mesajı kaydedince yayınlar. Tüketici: inference-orchestrator (Saga başlatır).",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "const": "message.user-sent.v1" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string" },
+    "traceId": { "type": "string" },
+    "userId": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["messageId", "chatId", "userId", "text", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "messageId": { "type": "string", "format": "uuid" },
+        "chatId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "text": { "type": "string" },
+        "modelHint": { "type": ["string", "null"] },
+        "attachmentIds": {
+          "type": "array",
+          "items": { "type": "string", "format": "uuid" }
+        },
+        "idempotencyKey": { "type": ["string", "null"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

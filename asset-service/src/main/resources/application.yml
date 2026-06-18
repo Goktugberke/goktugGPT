@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: asset-service
+  config:
+    import: ${SPRING_CONFIG_IMPORT:optional:configserver:http://config-server:8888}
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5436/asset_db}
     username: ${DB_USER:asset}
@@ -17,8 +19,9 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
 
 minio:
-  endpoint:   ${MINIO_ENDPOINT:http://localhost:9000}
-  access-key: ${MINIO_ACCESS_KEY:minio}
+  endpoint:        ${MINIO_ENDPOINT:http://localhost:9000}
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+  access-key:      ${MINIO_ACCESS_KEY:minio}
   secret-key: ${MINIO_SECRET_KEY:minio12345}
   bucket:     gpt-assets
   region:     us-east-1
@@ -26,13 +29,9 @@ minio:
 
 asset:
   max-size-bytes: 52428800   # 50 MB
-  allowed-mime-types:
-    - image/png
-    - image/jpeg
-    - image/webp
-    - image/gif
-    - application/pdf
-    - text/plain
+  # @Value("${asset.allowed-mime-types}") on List<String> needs comma-separated;
+  # YAML list form is only consumable through @ConfigurationProperties.
+  allowed-mime-types: image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain
 
 resilience4j:
   circuitbreaker:

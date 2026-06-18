@@ -91,6 +91,10 @@ services:
     ports:
       - "5435:5432"
     networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inference -d inference_db"]
+      interval: 5s
+      retries: 5
 
   postgres-asset:
     image: postgres:16-alpine
@@ -104,6 +108,10 @@ services:
     ports:
       - "5436:5432"
     networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asset -d asset_db"]
+      interval: 5s
+      retries: 5
 
   postgres-billing:
     image: postgres:16-alpine
@@ -117,6 +125,10 @@ services:
     ports:
       - "5437:5432"
     networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing -d billing_db"]
+      interval: 5s
+      retries: 5
 
   postgres-keycloak:
     image: postgres:16-alpine
@@ -128,6 +140,10 @@ services:
     volumes:
       - postgres-keycloak-data:/var/lib/postgresql/data
     networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      retries: 5
 
   # ============================================================
   #  INFRA — IAM
@@ -136,7 +152,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:25.0
     profiles: ["infra", "all"]
-    command: start-dev --import-realm
+    command: start-dev --import-realm --health-enabled=true
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
@@ -147,13 +163,21 @@ services:
       KC_HOSTNAME: localhost
       KC_HOSTNAME_PORT: 8180
       KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "8180:8080"
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import:ro
     depends_on:
-      - postgres-keycloak
+      postgres-keycloak:
+        condition: service_healthy
     networks: [goktug-net]
+    healthcheck:
+      # Keycloak 25's built-in /health/ready endpoint on management port 9000
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
+      interval: 10s
+      retries: 20
+      start_period: 30s
 
   # ============================================================
   #  INFRA — CACHE / RATE LIMIT / SESSION
@@ -186,12 +210,18 @@ services:
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
     networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/2181'"]
+      interval: 5s
+      retries: 10
+      start_period: 10s
 
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     profiles: ["infra", "all"]
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -206,6 +236,11 @@ services:
     ports:
       - "9092:9092"
     networks: [goktug-net]
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      retries: 15
+      start_period: 20s
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -213,10 +248,35 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      # Apicurio Schema Registry'yi Kafka-UI'a tanıt (schema sekmesi)
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8080/apis/ccompat/v7
     ports:
       - "8090:8080"
     depends_on:
       - kafka
+    networks: [goktug-net]
+
+  # ============================================================
+  #  SCHEMA REGISTRY (Apicurio — JSON Schema native)
+  # ============================================================
+  #  Event şemaları (schemas/events/*.json) burada versiyonlanır ve
+  #  BACKWARD compatibility kuralıyla korunur. Kayıt: scripts/register-schemas.ps1
+  #  REST API: http://localhost:8086/apis/registry/v2
+  #  Confluent-uyumlu API: http://localhost:8086/apis/ccompat/v7
+  #  UI: http://localhost:8086/ui
+  schema-registry:
+    image: apicurio/apicurio-registry-mem:2.5.11.Final
+    profiles: ["infra", "all"]
+    environment:
+      QUARKUS_HTTP_CORS_ORIGINS: "*"
+    ports:
+      - "8086:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/apis/registry/v2/system/info || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks: [goktug-net]
 
   # ============================================================
@@ -333,6 +393,35 @@ services:
   #  build api-gateway` hata verir — bu beklenen durumdur. Servisleri
   #  scaffold ettikçe up edebilirsin.
 
+  config-server:
+    build:
+      context: .
+      dockerfile: config-server/Dockerfile
+    profiles: ["all"]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # Default backend = bind-mounted local git repo (file://).
+      # GitHub'a geçmek için: CONFIG_GIT_URI=https://github.com/<owner>/<repo>.git
+      # ve gerekirse CONFIG_GIT_USERNAME / CONFIG_GIT_PASSWORD (PAT) ver.
+      CONFIG_GIT_URI: file:///opt/config-repo
+      CONFIG_GIT_BRANCH: main
+    volumes:
+      # Read-write bind-mount: JGit working copy'de index.lock yazıyor (refresh/
+      # checkout sırasında), :ro olunca FileSystemException atıyor. Host'ta
+      # config-repo'yu sen edit edersin → git commit; container sadece okuma
+      # niyetinde ama JGit bookkeeping yazılarına izin vermek gerek.
+      - ./config-repo:/opt/config-repo
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/actuator/health | grep -q UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [goktug-net]
+    restart: unless-stopped
+
   api-gateway:
     build:
       context: .
@@ -340,24 +429,29 @@ services:
     profiles: ["all"]
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/goktuggpt
+      KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/goktuggpt/protocol/openid-connect/certs
       REDIS_HOST: redis
       # OpenTelemetry — auto instrumentation via java agent
       OTEL_SERVICE_NAME: api-gateway
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
       OTEL_TRACES_SAMPLER: parentbased_traceidratio
       OTEL_TRACES_SAMPLER_ARG: "1.0"
     depends_on:
-      - keycloak
-      - redis
-      - jaeger
+      keycloak:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     ports:
       - "8080:8080"
     networks: [goktug-net]
+    restart: unless-stopped
 
   identity-service:
     build:
@@ -374,17 +468,23 @@ services:
       OTEL_SERVICE_NAME: identity-service
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
-      - postgres-identity
-      - keycloak
-      - kafka
-      - jaeger
+      postgres-identity:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     ports:
       - "8081:8081"
     networks: [goktug-net]
+    restart: unless-stopped
 
   conversation-service:
     build:
@@ -401,17 +501,23 @@ services:
       OTEL_SERVICE_NAME: conversation-service
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
-      - postgres-conversation
-      - kafka
-      - elasticsearch
-      - jaeger
+      postgres-conversation:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     ports:
       - "8082:8082"
     networks: [goktug-net]
+    restart: unless-stopped
 
   inference-orchestrator:
     build:
@@ -431,16 +537,21 @@ services:
       OTEL_SERVICE_NAME: inference-orchestrator
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
-      - postgres-inference
-      - kafka
-      - jaeger
+      postgres-inference:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     ports:
       - "8083:8083"
     networks: [goktug-net]
+    restart: unless-stopped
 
   llm-server:
     build:
@@ -461,6 +572,7 @@ services:
     ports:
       - "9001:9001"
     networks: [goktug-net]
+    restart: unless-stopped
 
   asset-service:
     build:
@@ -473,21 +585,29 @@ services:
       DB_USER: asset
       DB_PASSWORD: asset_pw
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://localhost:9000
       MINIO_ACCESS_KEY: minio
       MINIO_SECRET_KEY: minio12345
       KAFKA_BOOTSTRAP: kafka:29092
       OTEL_SERVICE_NAME: asset-service
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
-      - postgres-asset
-      - minio
-      - kafka
-      - jaeger
+      postgres-asset:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     networks: [goktug-net]
+    restart: unless-stopped
+
   guardrail-service:
     build: ./guardrail-service
     profiles: ["all"]
@@ -497,6 +617,7 @@ services:
     ports:
       - "9003:9003"
     networks: [goktug-net]
+    restart: unless-stopped
 
   router-service:
     build: ./router-service
@@ -507,6 +628,7 @@ services:
     ports:
       - "9002:9002"
     networks: [goktug-net]
+    restart: unless-stopped
 
   billing-service:
     build:
@@ -526,17 +648,23 @@ services:
       OTEL_SERVICE_NAME: billing-service
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=goktug,service.version=0.1.0,deployment.environment=dev"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
-      - postgres-billing
-      - redis
-      - kafka
-      - jaeger
+      postgres-billing:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     ports:
       - "8085:8080"
     networks: [goktug-net]
+    restart: unless-stopped
 
   telemetry-consumer:
     build:
@@ -556,14 +684,21 @@ services:
       COLD_STORAGE_SECRET_KEY: minio12345
       OTEL_SERVICE_NAME: telemetry-consumer
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
-      - kafka
-      - elasticsearch
-      - minio
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     networks: [goktug-net]
+    restart: unless-stopped
 
   notification-service:
     build:
@@ -579,12 +714,17 @@ services:
       MAIL_FROM: "${MAIL_FROM:-no-reply@goktug.dev}"
       OTEL_SERVICE_NAME: notification-service
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-      OTEL_TRACES_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     ports:
       - "8087:8080"
     networks: [goktug-net]
+    restart: unless-stopped
 

@@ -1,0 +1,35 @@
+{{- if .Values.ingress.enabled }}
+{{- $root := . -}}
+{{- /* api-gateway tek giriş noktası; sadece public:true servisleri yönlendir */ -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: goktug-platform
+  labels:
+    {{- include "goktug.labels" $root | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"   # SSE/streaming için
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"       # token token aksın
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: goktug-tls
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- range $name, $svc := .Values.services }}
+          {{- if $svc.public }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  number: {{ $svc.port }}
+          {{- end }}
+          {{- end }}
+{{- end }}

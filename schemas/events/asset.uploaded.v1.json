@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://goktug.dev/schemas/events/asset.uploaded.v1.json",
+  "title": "asset.uploaded.v1",
+  "description": "asset-service presigned upload confirm edilince yayınlar (MinIO HEAD doğrulanmış). Tüketiciler: telemetry-consumer (analytics), ileride conversation (attachment linkleme).",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "const": "asset.uploaded.v1" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string" },
+    "traceId": { "type": "string" },
+    "userId": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["assetId", "userId", "filename", "mimeType", "sizeBytes", "storagePath", "uploadedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "assetId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "chatId": { "type": "string", "format": "uuid" },
+        "filename": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "storagePath": { "type": "string" },
+        "checksumSha256": { "type": "string" },
+        "uploadedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

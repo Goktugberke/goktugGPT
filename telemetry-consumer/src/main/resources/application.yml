@@ -5,6 +5,9 @@ spring:
   application:
     name: telemetry-consumer
 
+  config:
+    import: ${SPRING_CONFIG_IMPORT:optional:configserver:http://config-server:8888}
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka:29092}
     consumer:

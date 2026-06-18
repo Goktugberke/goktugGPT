@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://goktug.dev/schemas/events/chat.title-changed.v1.json",
+  "title": "chat.title-changed.v1",
+  "description": "conversation-service chat başlığı değişince yayınlar. Tüketici: ChatSearchProjector (ES upsert).",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "const": "chat.title-changed.v1" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string" },
+    "traceId": { "type": "string" },
+    "userId": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["chatId", "userId", "title"],
+      "additionalProperties": true,
+      "properties": {
+        "chatId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "title": { "type": "string" }
+      }
+    }
+  }
+}

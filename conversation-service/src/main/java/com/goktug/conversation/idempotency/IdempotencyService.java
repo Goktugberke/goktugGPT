@@ -53,6 +53,7 @@ public class IdempotencyService {
             UUID userId,
             String key,
             String endpoint,
+            Class<T> responseType,
             Supplier<ResultWithStatus<T>> action
     ) {
         // Önce cache'e bak
@@ -63,10 +64,9 @@ public class IdempotencyService {
         if (cached.isPresent()) {
             log.debug("Idempotency hit: user={} key={} endpoint={}", userId, key, endpoint);
             try {
-                @SuppressWarnings("unchecked")
-                T result = (T) objectMapper.treeToValue(
-                    cached.get().getResponseBody(), Object.class);
-                return result;
+                // Caller'ın gerçek target type'ı ile deserialize et — yoksa
+                // Jackson default LinkedHashMap döner ve cast hatası verir.
+                return objectMapper.treeToValue(cached.get().getResponseBody(), responseType);
             } catch (Exception ex) {
                 log.warn("Failed to deserialize cached idempotent response, will re-execute", ex);
             }

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://goktug.dev/schemas/events/inference.completed.v1.json",
+  "title": "inference.completed.v1",
+  "description": "inference-orchestrator Saga başarıyla bitince yayınlar. Tüketiciler: conversation-service (assistant mesajını persist eder), billing-service (token usage düşer), notification-service (WS push).",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "const": "inference.completed.v1" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string" },
+    "traceId": { "type": "string" },
+    "userId": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["jobId", "chatId", "userId", "messageId", "responseText", "completedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "jobId": { "type": "string", "format": "uuid" },
+        "chatId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "messageId": { "type": "string", "format": "uuid" },
+        "responseText": { "type": "string" },
+        "modelUsed": { "type": "string" },
+        "tokenUsage": {
+          "type": "object",
+          "required": ["promptTokens", "completionTokens"],
+          "additionalProperties": true,
+          "properties": {
+            "promptTokens": { "type": "integer", "minimum": 0 },
+            "completionTokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "latencyMs": { "type": "integer", "minimum": 0 },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

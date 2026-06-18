@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://goktug.dev/schemas/events/chat.created.v1.json",
+  "title": "chat.created.v1",
+  "description": "conversation-service yeni chat oluşturunca yayınlar. Tüketici: ChatSearchProjector (Elasticsearch CQRS read model).",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "const": "chat.created.v1" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string" },
+    "traceId": { "type": "string" },
+    "userId": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["chatId", "userId", "title", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "chatId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

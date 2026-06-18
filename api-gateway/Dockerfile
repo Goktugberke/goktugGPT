@@ -5,6 +5,7 @@ RUN apk add --no-cache maven
 
 # Copy parent + all module POMs first so Maven can resolve the reactor
 COPY pom.xml ./pom.xml
+COPY config-server/pom.xml ./config-server/pom.xml
 COPY api-gateway/pom.xml ./api-gateway/pom.xml
 COPY identity-service/pom.xml ./identity-service/pom.xml
 COPY conversation-service/pom.xml ./conversation-service/pom.xml

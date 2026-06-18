@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://goktug.dev/schemas/events/inference.failed.v1.json",
+  "title": "inference.failed.v1",
+  "description": "inference-orchestrator Saga başarısız olunca yayınlar. Tüketici: notification-service (WS hata push).",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "payload"],
+  "additionalProperties": true,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "const": "inference.failed.v1" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string" },
+    "traceId": { "type": "string" },
+    "userId": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "required": ["jobId", "chatId", "userId", "reason", "failedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "jobId": { "type": "string", "format": "uuid" },
+        "chatId": { "type": "string", "format": "uuid" },
+        "userId": { "type": "string", "format": "uuid" },
+        "reason": { "type": "string" },
+        "failedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

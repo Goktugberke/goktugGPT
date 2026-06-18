@@ -1,0 +1,66 @@
+# Prod ortamı — çoklu replica, HPA açık, immutable image tag, TLS.
+#   helm upgrade --install goktug ./infra/helm/goktug-platform -f values-prod.yaml \
+#     --set global.imageTag=sha-<git-sha>
+global:
+  imageTag: "REPLACE_WITH_GIT_SHA"   # CI/CD --set ile immutable sha geçer
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - name: ghcr-creds
+
+defaults:
+  replicas: 2
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits:   { cpu: "1",    memory: "1Gi" }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 65
+
+# Hot-path servisler için daha agresif autoscale + kaynak
+services:
+  api-gateway:
+    port: 8080
+    java: true
+    public: true
+    replicas: 3
+    env:
+      REDIS_HOST: redis
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 60
+  inference-orchestrator:
+    port: 8083
+    java: true
+    env:
+      DB_URL: jdbc:postgresql://postgres-inference:5432/inference_db
+      GUARDRAIL_URL: http://guardrail-service:9003
+      ROUTER_URL: http://router-service:9002
+      BILLING_URL: http://billing-service:8080
+      INFERENCE_WORKER_GOKTUG_URL: http://llm-server:9001
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 60
+  llm-server:
+    port: 9001
+    java: false
+    healthPath: /v1/health
+    replicas: 2
+    resources:
+      requests: { cpu: "1",  memory: "2Gi" }
+      limits:   { cpu: "4",  memory: "6Gi" }
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 75
+
+ingress:
+  enabled: true
+  host: chat.goktug.dev
+  tls: true

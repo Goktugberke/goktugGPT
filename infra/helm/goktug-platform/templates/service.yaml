@@ -1,0 +1,19 @@
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "goktug.labels" $root | nindent 4 }}
+    {{- include "goktug.selectorLabels" (dict "name" $name "root" $root) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "goktug.selectorLabels" (dict "name" $name "root" $root) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+{{- end }}

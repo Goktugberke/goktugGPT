@@ -5,6 +5,9 @@ spring:
   application:
     name: conversation-service
 
+  config:
+    import: ${SPRING_CONFIG_IMPORT:optional:configserver:http://config-server:8888}
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5434/conversation_db}
     username: ${DB_USER:conversation}

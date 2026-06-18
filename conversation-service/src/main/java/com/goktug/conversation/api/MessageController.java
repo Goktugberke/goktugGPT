@@ -45,7 +45,7 @@ public class MessageController {
         String endpoint = "POST /api/v1/chats/{chatId}/messages";
 
         MessageDto dto = idempotencyService.executeIdempotent(
-            userId, idempotencyKey, endpoint,
+            userId, idempotencyKey, endpoint, MessageDto.class,
             () -> {
                 MessageDto m = messageService.saveUserMessage(userId, chatId, idempotencyKey, body, traceId);
                 return new IdempotencyService.ResultWithStatus<>(HttpStatus.CREATED.value(), m);

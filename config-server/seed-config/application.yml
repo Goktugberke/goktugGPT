@@ -1,0 +1,35 @@
+# goktugGPT - shared platform configuration (VERSION-CONTROLLED SEED)
+#
+# Bu dosya, Spring Cloud Config Server'ın Git backend'inin okuduğu runtime
+# `config-repo/` dizininin KAYNAĞIDIR. Runtime config-repo/ bir Git deposudur
+# (JGit ile okunur) ve .gitignore'dadır; bu yüzden paylaşılan config'in
+# kanonik/versiyonlu kopyası burada tutulur.
+#
+# Akış:  bu seed  --(scripts/init-config-repo)-->  ./config-repo/ (git init'li runtime)
+# Config'i değiştireceksen BURAYI düzenle, sonra init script'i tekrar çalıştır
+# (veya doğrudan ./config-repo/application.yml'i düzenleyip commit et).
+#
+# ⚠️ KAPSAM: SADECE "her serviste aynı + çakışmayan" cross-cutting değerler.
+# Servise özel ayar (kafka serializer, resilience4j instance, management
+# exposure) servisin KENDİ application.yml'inde kalır — çünkü:
+#   - resilience4j.timelimiter.default → orchestrator'ın SSE stream'ini keserdi
+#   - management exposure → gateway/orchestrator kendi endpoint'lerini kaybederdi
+#   - kafka.producer.* → consumer-only servislere gereksiz config enjekte ederdi
+
+# --- Keycloak / OIDC ----------------------------------------------------
+keycloak:
+  issuer-uri:  ${KEYCLOAK_ISSUER:http://localhost:8080/realms/goktuggpt}
+  jwk-set-uri: ${KEYCLOAK_JWKS_URI:http://keycloak:8080/realms/goktuggpt/protocol/openid-connect/certs}
+
+# --- OpenTelemetry collector endpoint -----------------------------------
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger:4317}
+
+# --- K8s/probe uyumu (additive) -----------------------------------------
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true

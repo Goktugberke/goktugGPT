@@ -94,3 +94,19 @@ kaggle-gpt-train.ipynb
 *.log
 temp/
 tmp/
+
+# Spring Cloud Config Git backend — config-repo/ runtime'da bir JGit deposudur
+# (nested .git içerir), bu yüzden ana repo onu izleyemez. Kanonik/versiyonlu
+# kopya config-server/seed-config/ altında tutulur; runtime config-repo/
+# scripts/init-config-repo ile seed'den üretilir. Tüm dizini yok say.
+config-repo/
+
+# ML model ağırlıkları / checkpoint'ler — büyük binary, repo'ya girmez
+# (llm-server zaten ayrı bir nested repo; bu kural savunma amaçlı).
+*.pt
+*.bin
+*.safetensors
+*.onnx
+*.ckpt
+**/checkpoints/
+

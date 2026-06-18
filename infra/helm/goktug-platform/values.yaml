@@ -1,0 +1,130 @@
+# ============================================================
+#  goktug-platform — default values
+# ------------------------------------------------------------
+#  Bütün ortamların TABANI. Ortama özel farklar values-dev.yaml /
+#  values-prod.yaml ile override edilir:
+#     helm install goktug ./infra/helm/goktug-platform -f values-prod.yaml
+#
+#  Mimari karar: 11 servis için 11 ayrı chart kopyalamak yerine TEK chart +
+#  `services` map'i üzerinde dönen generic template'ler. DRY, bakımı kolay,
+#  yeni servis = map'e 6 satır.
+# ============================================================
+
+global:
+  imageRegistry: ghcr.io/goktug          # CI/CD bunu GHCR'a push ediyor (bkz docs/guides/GITHUB_ACTIONS_CICD.md)
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []                     # private GHCR için: [{ name: ghcr-creds }]
+
+# Tüm servislere ConfigMap olarak enjekte edilen ortak (gizli olmayan) env.
+sharedEnv:
+  KAFKA_BOOTSTRAP: "kafka:9092"
+  SPRING_CONFIG_IMPORT: "optional:configserver:http://config-server:8888"
+  KEYCLOAK_JWKS_URI: "http://keycloak:8080/realms/goktuggpt/protocol/openid-connect/certs"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger-collector:4317"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  OTEL_TRACES_EXPORTER: "otlp"
+
+# Gizli değerler Secret'tan gelir (Faz 3'te Vault). Burada SADECE referans;
+# gerçek değerler `kubectl create secret generic goktug-secrets ...` ile verilir.
+secretName: goktug-secrets
+
+# Tüm Deployment'lara uygulanan güvenlik/ölçek varsayılanları
+defaults:
+  replicas: 1
+  revisionHistoryLimit: 3
+  resources:
+    requests: { cpu: "100m", memory: "256Mi" }
+    limits:   { cpu: "500m", memory: "512Mi" }
+  # Spring Boot actuator probe yolları (management.endpoint.health.probes.enabled=true ile gelir)
+  livenessPath:  /actuator/health/liveness
+  readinessPath: /actuator/health/readiness
+  hpa:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+# ------------------------------------------------------------
+#  SERVİS HARİTASI — generic template'ler bunun üzerinde döner
+#  port  = container port (servisin server.port'u)
+#  java  = true → actuator probe yolları; false → custom healthPath
+# ------------------------------------------------------------
+services:
+  api-gateway:
+    port: 8080
+    java: true
+    public: true            # ingress'ten dışarı açılır
+    env:
+      REDIS_HOST: redis
+  identity-service:
+    port: 8081
+    java: true
+    env:
+      DB_URL: jdbc:postgresql://postgres-identity:5432/identity_db
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+  conversation-service:
+    port: 8082
+    java: true
+    env:
+      DB_URL: jdbc:postgresql://postgres-conversation:5432/conversation_db
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+  inference-orchestrator:
+    port: 8083
+    java: true
+    env:
+      DB_URL: jdbc:postgresql://postgres-inference:5432/inference_db
+      GUARDRAIL_URL: http://guardrail-service:9003
+      ROUTER_URL: http://router-service:9002
+      BILLING_URL: http://billing-service:8080
+      INFERENCE_WORKER_GOKTUG_URL: http://llm-server:9001
+  asset-service:
+    port: 8084
+    java: true
+    env:
+      DB_URL: jdbc:postgresql://postgres-asset:5432/asset_db
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://minio:9000
+  billing-service:
+    port: 8080
+    java: true
+    env:
+      DB_HOST: postgres-billing
+      REDIS_HOST: redis
+  telemetry-consumer:
+    port: 8080
+    java: true
+    env:
+      ELASTICSEARCH_URI: http://elasticsearch:9200
+      COLD_STORAGE_ENDPOINT: http://minio:9000
+  notification-service:
+    port: 8080
+    java: true
+  config-server:
+    port: 8888
+    java: true
+    # config-server'ın kendisi config import etmez
+    env:
+      SPRING_CONFIG_IMPORT: ""
+  llm-server:
+    port: 9001
+    java: false
+    healthPath: /v1/health
+    resources:                # model ağır — daha çok bellek
+      requests: { cpu: "500m", memory: "1Gi" }
+      limits:   { cpu: "2",    memory: "3Gi" }
+  guardrail-service:
+    port: 9003
+    java: false
+    healthPath: /health
+  router-service:
+    port: 9002
+    java: false
+    healthPath: /health
+
+# Ingress — sadece api-gateway dışarı açılır
+ingress:
+  enabled: true
+  className: nginx
+  host: goktug.local
+  tls: false

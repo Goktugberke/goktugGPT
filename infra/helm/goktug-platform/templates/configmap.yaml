@@ -1,0 +1,11 @@
+{{- $root := . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: goktug-shared-env
+  labels:
+    {{- include "goktug.labels" $root | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.sharedEnv }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

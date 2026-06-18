@@ -43,8 +43,10 @@ public class KeycloakClient {
     private final String adminClientSecret;
     private final String publicClientId;
 
-    private static final Duration NETTY_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration MONO_TIMEOUT = Duration.ofSeconds(8);
+    // Keycloak's first JIT-compile + DB warmup hit (after a fresh container
+    // boot) can take 15-20 seconds. Give it enough headroom.
+    private static final Duration NETTY_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration MONO_TIMEOUT = Duration.ofSeconds(25);
 
     public KeycloakClient(
             @Value("${keycloak.base-url}") String baseUrl,

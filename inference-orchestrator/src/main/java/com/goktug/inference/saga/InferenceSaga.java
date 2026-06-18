@@ -108,10 +108,22 @@ public class InferenceSaga {
                     workerEvent.tokenCount(),
                     null);
             })
-            .doOnComplete(() -> {
+            .doFinally(signal -> {
+                // ON_COMPLETE: worker fully done. ON_CANCEL: client disconnected
+                // mid-stream. ON_ERROR: handled by onErrorResume below.
+                // We still want to persist whatever tokens we accumulated and
+                // publish inference.completed.v1 so the assistant message is
+                // written by conversation-service even if the SSE client gave up.
+                if (signal == reactor.core.publisher.SignalType.ON_ERROR) return;
                 long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
                 String fullText = responseAccumulator.toString();
+                if (fullText.isEmpty()) {
+                    log.warn("Saga[{}] terminated with empty response (signal={})", jobId, signal);
+                    return;
+                }
                 int approxTokens = Math.max(1, fullText.split("\\s+").length);
+                log.info("Saga[{}] completing via signal={} bytes={} tokens={}",
+                    jobId, signal, fullText.length(), approxTokens);
                 completeSaga(jobId, fullText, selectedModel.get(),
                     approxTokens, approxTokens, latencyMs, req);
             })

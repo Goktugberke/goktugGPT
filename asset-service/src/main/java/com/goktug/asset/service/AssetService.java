@@ -29,7 +29,7 @@ public class AssetService {
 
     private final AssetRepository repository;
     private final PresignedUrlService presigner;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
     @Value("${asset.max-size-bytes}")
@@ -159,7 +159,7 @@ public class AssetService {
         payload.put("uploadedAt", OffsetDateTime.now().toString());
         envelope.set("payload", payload);
 
-        kafkaTemplate.send("asset.events", asset.getId().toString(), envelope);
+        kafkaTemplate.send("asset.events", asset.getId().toString(), envelope.toString());
     }
 
     private String buildStoragePath(UUID userId, UUID assetId, String filename) {

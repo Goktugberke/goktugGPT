@@ -20,8 +20,18 @@ import java.net.URI;
 @Configuration
 public class MinioConfig {
 
+    /** Internal endpoint for S3 ops (asset-service -> MinIO container). */
     @Value("${minio.endpoint}")
     private String endpoint;
+
+    /**
+     * Public endpoint baked into presigned URLs. Browsers/curl hit this from
+     * the host, so it must resolve from outside the docker network. Falls
+     * back to the internal endpoint when not configured (e.g. when the app
+     * itself consumes presigned URLs, which it doesn't here).
+     */
+    @Value("${minio.public-endpoint:${minio.endpoint}}")
+    private String publicEndpoint;
 
     @Value("${minio.access-key}")
     private String accessKey;
@@ -48,7 +58,7 @@ public class MinioConfig {
     @Bean
     public S3Presigner s3Presigner() {
         return S3Presigner.builder()
-            .endpointOverride(URI.create(endpoint))
+            .endpointOverride(URI.create(publicEndpoint))
             .region(Region.of(region))
             .credentialsProvider(StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(accessKey, secretKey)))

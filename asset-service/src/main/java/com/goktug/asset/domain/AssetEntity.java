@@ -18,7 +18,6 @@ public class AssetEntity {
     public enum Status { PENDING_UPLOAD, READY, DELETED }
 
     @Id
-    @GeneratedValue
     private UUID id;
 
     @Column(name = "user_id", nullable = false)

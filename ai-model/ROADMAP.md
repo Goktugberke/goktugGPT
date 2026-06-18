@@ -1,7 +1,17 @@
-# goktugGPT — Roadmap & To-Do
+# goktugGPT — AI Model Roadmap & To-Do
+
+> **Kapsam:** Bu roadmap **yalnızca `ai-model/` (transformer LLM)** geleceğini planlar —
+> veri ölçeklendirme, gerçek reasoning (STaR), model-içi özellikler. Platform geneli
+> (mikroservis backend) roadmap'i için bkz. [`../docs/`](../docs/) (MICROSERVICES_PLAN,
+> PHASE2/PHASE3). Frontend artık ayrı bir üst-dizin ([`../frontend/`](../frontend/)).
+>
+> **Güncel notlar (bu liste eski bağlamda yazıldı):**
+> - Madde 3 "Modern GUI" → artık platformun ayrı `frontend/` katmanında ele alınıyor
+>   (React + antik-çağ teması), `gui.py` sadece yerel model denemeleri için duruyor.
+> - Madde 7 "Devasa README" → ✅ yapıldı (bu README + kök README + backend README).
+> - Veri/reasoning maddeleri (1, 2, 4, 5, 6) hâlâ geçerli AI hedefleri.
 
 Bu dosya projenin geleceğini planlar. Her madde teknik detaylarıyla açıklanmıştır.
-Şu an yapılmıyor — ileriye yönelik geliştirme listesi.
 
 ---
 

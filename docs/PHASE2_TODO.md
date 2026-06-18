@@ -2,6 +2,24 @@
 
 > Faz 1 (MVP) çalıştığını doğruladıktan sonra bu listeyi sırayla yap.
 
+## Durum (güncel)
+
+| # | Madde | Durum |
+|---|-------|-------|
+| 2.1–2.5 | guardrail, router, billing, telemetry, notification servisleri | ✅ |
+| 2.6 | OpenTelemetry → Jaeger tracing | ✅ (8/8 servis, Saga tek trace) |
+| 2.7 | Spring Cloud Config | ✅ (Git backend + seed) |
+| 2.8 | Service Mesh (Istio) | 📘 Kılavuz hazır (`docs/guides/ISTIO_SETUP.md`) — kullanıcı yapacak |
+| 2.9 | CQRS chat search (Elasticsearch) | ✅ |
+| 2.10 | Schema Registry (Apicurio) | ✅ (8 JSON Schema + backward-compat) |
+| 2.11 | Helm Charts | ✅ (umbrella chart, dev/prod values) |
+| 2.12 | GitHub Actions CI/CD | 📘 Kılavuz hazır (`docs/guides/GITHUB_ACTIONS_CICD.md`) — kullanıcı yapacak |
+| 2.13 | Testcontainers integration tests | ⏳ Ertelendi (indirme/bant genişliği) |
+| 2.14 | Load testing (k6/Gatling) | ⏳ Ertelendi |
+| 2.15 | React frontend | ⏳ Ayrı `frontend/` üst-dizininde, tasarım aşamasında |
+
+> Aşağısı orijinal detaylı planlardır (referans için korunuyor).
+
 ## Servisler
 
 ### 2.1 guardrail-service (Python)

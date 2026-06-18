@@ -5,6 +5,12 @@ spring:
   application:
     name: identity-service
 
+  # Config Server: shared/env config'i Git'ten çek. "optional:" prefix'i
+  # config-server down olunca service'in yine de boot etmesini sağlar
+  # (default'lar üzerinden çalışmaya devam).
+  config:
+    import: ${SPRING_CONFIG_IMPORT:optional:configserver:http://config-server:8888}
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/identity_db}
     username: ${DB_USER:identity}
@@ -68,6 +74,16 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+  # Spring-native tracing (Micrometer → OTLP HTTP). Diğer servisler javaagent
+  # kullanıyor (gRPC 4317); identity agent'sız olduğu için Micrometer'in OTLP
+  # HTTP exporter'ı (4318) ile gönderir. Bu key'ler SADECE identity'de — shared
+  # config'e konulsa agent servislerinde çift export'a yol açardı.
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTLP_HTTP_ENDPOINT:http://jaeger:4318/v1/traces}
 
 otel:
   exporter:

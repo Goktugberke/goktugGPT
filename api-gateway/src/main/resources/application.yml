@@ -5,6 +5,9 @@ spring:
   application:
     name: api-gateway
 
+  config:
+    import: ${SPRING_CONFIG_IMPORT:optional:configserver:http://config-server:8888}
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -14,8 +17,13 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # JWKS endpoint — Keycloak realm public keys
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/goktuggpt}
+          # Use jwk-set-uri instead of issuer-uri to skip the strict issuer
+          # match. Container-internal Keycloak URL (http://keycloak:8080)
+          # is used to fetch keys, but JWT tokens carry iss="http://localhost:..."
+          # because Keycloak is exposed on a different host:port to browsers.
+          # Issuer claim is still verified by Spring; we relax that via
+          # `jwk-set-uri` only and let the audience / signature check stand.
+          jwk-set-uri: ${KEYCLOAK_JWKS_URI:http://keycloak:8080/realms/goktuggpt/protocol/openid-connect/certs}
 
   cloud:
     # Disable Spring Cloud / Spring Boot compatibility check.

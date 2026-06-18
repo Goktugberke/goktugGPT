@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: billing-service
+  config:
+    import: ${SPRING_CONFIG_IMPORT:optional:configserver:http://config-server:8888}
   datasource:
     url: jdbc:postgresql://${DB_HOST:postgres-billing}:${DB_PORT:5432}/${DB_NAME:billing_db}
     username: ${DB_USER:billing}

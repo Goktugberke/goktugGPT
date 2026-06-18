@@ -67,6 +67,23 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!--
+                Force Spring Cloud Gateway server to 4.1.4: 4.1.5+ requires the
+                HttpHeaders.headerSet() method introduced in Spring Framework
+                6.2 (Boot 3.4+). We're on Boot 3.3.4 / Spring 6.1.13. Maven
+                resolves the closest dependencyManagement entry, so this
+                override here in the parent POM beats the spring-cloud BOM.
+            -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-gateway-server</artifactId>
+                <version>4.1.4</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-starter-gateway</artifactId>
+                <version>4.1.4</version>
+            </dependency>
             <dependency>
                 <groupId>io.github.resilience4j</groupId>
                 <artifactId>resilience4j-bom</artifactId>
@@ -153,6 +170,7 @@
       Şimdi yorumda bırakıyoruz çünkü içleri henüz boş.
     -->
     <modules>
+        <module>config-server</module>
         <module>api-gateway</module>
         <module>identity-service</module>
         <module>conversation-service</module>

@@ -1,0 +1,27 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        git:
+          # Default: container içine bind-mount edilen yerel bare repo (file://).
+          # GitHub'a geçince CONFIG_GIT_URI=https://github.com/<owner>/<repo>.git ver.
+          uri: ${CONFIG_GIT_URI:file:///opt/config-repo}
+          default-label: ${CONFIG_GIT_BRANCH:main}
+          # Auth: HTTPS basic auth (PAT) için. SSH'a geçilirse private-key kullan.
+          username: ${CONFIG_GIT_USERNAME:}
+          password: ${CONFIG_GIT_PASSWORD:}
+          # File:// için clone-on-start gerek yok, performans için kapatıyoruz.
+          clone-on-start: ${CONFIG_GIT_CLONE_ON_START:false}
+          force-pull: true
+          timeout: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info

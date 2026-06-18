@@ -1,0 +1,24 @@
+# Build context = backend/ (docker-compose.yml burada). Bu dosya, image
+# build'lerine gereksiz/agir dosyalarin gonderilmesini engeller.
+
+# Build artifacts
+**/target/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+**/node_modules/
+
+# Git metadata (nested llm-server/.git dahil) ve dokuman
+**/.git/
+.gitignore
+*.md
+
+# llm-server: model agirliklari runtime'da volume olarak mount edilir,
+# build context'e 394MB gondermeye gerek yok.
+llm-server/checkpoints/
+llm-server/data/
+llm-server/.venv/
+
+# Spring Cloud Config runtime deposu (build'e gerekmez)
+config-repo/

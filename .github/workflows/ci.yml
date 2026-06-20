@@ -17,13 +17,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
 
       - name: Build with Maven
+        working-directory: backend
         run: mvn clean package -DskipTests
 
   build-python-services:
@@ -42,8 +43,8 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
+        working-directory: backend/${{ matrix.service }}
         run: |
-          cd ${{ matrix.service }}
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
@@ -52,6 +53,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Validate Docker Compose
-        run: docker compose config -q
+        run: docker compose -f backend/docker-compose.yml config -q

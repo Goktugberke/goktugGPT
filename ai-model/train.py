@@ -27,9 +27,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train goktugGPT from scratch")
     parser.add_argument(
         "--config",
-        choices=["tiny", "default", "medium", "large"],
+        choices=["tiny", "default", "medium", "large", "xl"],
         default="tiny",
-        help="Model size configuration (default: tiny — fastest for local training)",
+        help="Model size configuration (xl ≈ 0.75B, for RTX 5090-class GPUs)",
     )
     parser.add_argument("--epochs", type=int, default=None, help="Override max_epochs")
     parser.add_argument("--batch-size", type=int, default=None, help="Override batch_size")
@@ -88,7 +88,7 @@ def main():
     args = parse_args()
 
     # --- Load config ---
-    from config import ModelConfig, TinyConfig, MediumConfig, LargeConfig
+    from config import ModelConfig, TinyConfig, MediumConfig, LargeConfig, XLConfig
 
     if args.config == "tiny":
         config = TinyConfig()
@@ -96,6 +96,8 @@ def main():
         config = MediumConfig()
     elif args.config == "large":
         config = LargeConfig()
+    elif args.config == "xl":
+        config = XLConfig()
     else:
         config = ModelConfig()
 
@@ -189,6 +191,7 @@ def main():
         n_layer=config.n_layer,
         dropout=config.dropout,
         max_seq_len=config.max_seq_len,
+        rope_theta=getattr(config, "rope_theta", 10000.0),
     )
 
     # --- Step 4: Train ---

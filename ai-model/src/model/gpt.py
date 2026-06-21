@@ -1,52 +1,44 @@
 """
-GoktugGPT — the full GPT-style language model.
+GoktugGPT — the full GPT-style language model (LLaMA-style modernised).
 
-Architecture (GPT-2 style decoder-only transformer):
+Architecture (decoder-only transformer):
 
   Input tokens
       │
-  [Token Embedding + Positional Encoding]
+  [Token Embedding]                         (positions via RoPE in attention)
       │
-  [TransformerBlock] × n_layer
+  [TransformerBlock] × n_layer              (RMSNorm + RoPE attention + SwiGLU)
       │
-  [LayerNorm]
+  [RMSNorm]
       │
-  [Linear head → logits over vocabulary]
+  [Linear head → logits over vocabulary]    (weight-tied with token embedding)
       │
-  softmax → next token probabilities
+  softmax → next-token probabilities
 
-The language-modelling objective is to predict the next token at each
-position given all previous tokens (causal / autoregressive).
+Modern components (all implemented from scratch — see the respective files):
+  • RoPE rotary positional embeddings  (attention.py)
+  • RMSNorm normalisation              (transformer.py)
+  • SwiGLU feed-forward                 (transformer.py)
+  • Flash Attention (fused SDPA)        (attention.py)
+  • KV-cache for fast generation        (this file's generate())
 
-Weight tying:
-  The output projection (head) shares weights with the token embedding
-  matrix.  This is a well-known trick that reduces parameters and often
-  improves performance.
+The objective is next-token prediction (causal / autoregressive language
+modelling). Weight tying shares the output projection with the token
+embedding matrix.
 """
 
-import math
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .embeddings import Embeddings
-from .transformer import TransformerDecoder
+from .transformer import TransformerDecoder, RMSNorm
 
 
 class GoktugGPT(nn.Module):
-    """
-    Decoder-only GPT-style language model.
-
-    Args:
-        vocab_size:  Size of the token vocabulary.
-        n_embed:     Embedding / hidden dimension (d_model).
-        n_head:      Number of attention heads per block.
-        n_layer:     Number of stacked TransformerBlock layers.
-        dropout:     Dropout probability applied throughout.
-        max_seq_len: Maximum sequence length the model can handle.
-    """
+    """Decoder-only GPT-style language model (LLaMA-style internals)."""
 
     def __init__(
         self,
@@ -56,44 +48,23 @@ class GoktugGPT(nn.Module):
         n_layer: int = 6,
         dropout: float = 0.1,
         max_seq_len: int = 512,
+        rope_theta: float = 10000.0,
     ):
         super().__init__()
         self.vocab_size = vocab_size
         self.n_embed = n_embed
         self.max_seq_len = max_seq_len
 
-        # --- Embedding layer ---
         self.embed = Embeddings(vocab_size, n_embed, max_seq_len, dropout)
-
-        # --- Transformer backbone ---
-        self.decoder = TransformerDecoder(n_embed, n_head, n_layer, dropout, max_seq_len)
-
-        # --- Final layer norm (Pre-LN style) ---
-        self.ln_f = nn.LayerNorm(n_embed)
-
-        # --- LM head: projects hidden states → logits ---
+        self.decoder = TransformerDecoder(n_embed, n_head, n_layer, dropout, max_seq_len, rope_theta)
+        self.ln_f = RMSNorm(n_embed)
         self.lm_head = nn.Linear(n_embed, vocab_size, bias=False)
 
-        # Weight tying: share token embedding weights with the LM head
+        # Weight tying: LM head shares the token embedding matrix.
         self.lm_head.weight = self.embed.token_embed.weight.weight
 
-        # Initialise weights
-        self.apply(self._init_weights)
-
-        # Count parameters
         n_params = sum(p.numel() for p in self.parameters())
-        print(f"GoktugGPT initialised — {n_params/1e6:.2f}M parameters")
-
-    def _init_weights(self, module: nn.Module):
-        if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        elif isinstance(module, nn.LayerNorm):
-            nn.init.ones_(module.weight)
-            nn.init.zeros_(module.bias)
+        print(f"GoktugGPT initialised — {n_params/1e6:.2f}M parameters (RoPE · RMSNorm · SwiGLU)")
 
     # ------------------------------------------------------------------
     # Forward pass
@@ -103,59 +74,99 @@ class GoktugGPT(nn.Module):
         self,
         input_ids: torch.Tensor,
         targets: Optional[torch.Tensor] = None,
+        start_pos: int = 0,
+        past_kvs: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = None,
+        use_cache: bool = False,
         return_all_attn: bool = False,
     ) -> dict:
         """
         Args:
-            input_ids:      (B, T) long tensor of token IDs.
-            targets:        (B, T) long tensor; if provided, computes CE loss.
-            return_all_attn: if True, returns attention weights for all layers.
-
-        Returns:
-            dict with keys:
-              'logits'  : (B, T, vocab_size)
-              'loss'    : scalar (only if targets provided)
-              'attn'    : list of (B, H, T, T) tensors (only if requested)
+            input_ids:      (B, T) token IDs.
+            targets:        (B, T) for training; computes cross-entropy loss.
+            start_pos:      absolute position of the first input token (RoPE/cache).
+            past_kvs:       per-layer (k, v) cache from a previous step.
+            use_cache:      return the updated KV-cache (for generation).
+            return_all_attn: return per-layer attention weights (visualisation).
         """
         B, T = input_ids.shape
-        assert T <= self.max_seq_len, (
-            f"Sequence length {T} exceeds max_seq_len {self.max_seq_len}"
+        assert start_pos + T <= self.max_seq_len, (
+            f"position {start_pos + T} exceeds max_seq_len {self.max_seq_len}"
         )
 
-        # Embed tokens + positions
-        x = self.embed(input_ids)  # (B, T, E)
+        x = self.embed(input_ids)
 
-        # Pass through transformer
+        present_kvs = None
+        all_attn = None
         if return_all_attn:
-            x, all_attn = self.decoder(x, return_all_attn=True)
+            x, all_attn = self.decoder(x, start_pos=start_pos, return_all_attn=True)
+        elif use_cache:
+            x, present_kvs = self.decoder(x, start_pos=start_pos, past_kvs=past_kvs, use_cache=True)
         else:
-            x = self.decoder(x)  # (B, T, E)
-            all_attn = None
+            x = self.decoder(x, start_pos=start_pos)
 
-        # Final norm + project to vocabulary
-        x = self.ln_f(x)          # (B, T, E)
-        logits = self.lm_head(x)  # (B, T, vocab_size)
+        x = self.ln_f(x)
+        logits = self.lm_head(x)
 
         result = {"logits": logits}
-
-        # --- Compute loss if targets provided ---
         if targets is not None:
-            # Shift so we predict position i+1 from position i
-            # logits: (B, T, V)  targets: (B, T)
             loss = F.cross_entropy(
                 logits.view(-1, self.vocab_size),
                 targets.view(-1),
-                ignore_index=-1,  # -1 means "don't compute loss here"
+                ignore_index=-1,
             )
             result["loss"] = loss
-
+        if use_cache:
+            result["past_kvs"] = present_kvs
         if return_all_attn:
             result["attn"] = all_attn
-
         return result
 
     # ------------------------------------------------------------------
-    # Text generation
+    # Sampling helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _sample_next(
+        logits: torch.Tensor,
+        context_ids: torch.Tensor,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+        repetition_penalty: float,
+    ) -> torch.Tensor:
+        """Apply repetition penalty + temperature + top-k/top-p, then sample. logits: (1, V)."""
+        # --- Repetition penalty ---
+        if repetition_penalty != 1.0:
+            for tid in set(context_ids[0].tolist()):
+                if logits[0, tid] > 0:
+                    logits[0, tid] /= repetition_penalty
+                else:
+                    logits[0, tid] *= repetition_penalty
+
+        # --- Temperature ---
+        if temperature != 1.0:
+            logits = logits / max(temperature, 1e-6)
+
+        # --- Top-k ---
+        if top_k > 0:
+            k = min(top_k, logits.size(-1))
+            kth = torch.topk(logits, k).values[:, -1:]
+            logits = logits.masked_fill(logits < kth, float("-inf"))
+
+        # --- Top-p (nucleus) ---
+        if top_p < 1.0:
+            sorted_logits, sorted_idx = torch.sort(logits, descending=True)
+            probs = F.softmax(sorted_logits, dim=-1)
+            cum = torch.cumsum(probs, dim=-1)
+            remove = (cum - probs) > top_p
+            sorted_logits[remove] = float("-inf")
+            logits = sorted_logits.scatter(1, sorted_idx, sorted_logits)
+
+        probs = F.softmax(logits, dim=-1)
+        return torch.multinomial(probs, num_samples=1)
+
+    # ------------------------------------------------------------------
+    # Text generation (KV-cached)
     # ------------------------------------------------------------------
 
     @torch.no_grad()
@@ -163,7 +174,7 @@ class GoktugGPT(nn.Module):
         self,
         input_ids: torch.Tensor,
         max_new_tokens: int = 200,
-        temperature: float = 0.3,
+        temperature: float = 0.7,
         top_k: int = 30,
         top_p: float = 0.9,
         repetition_penalty: float = 1.3,
@@ -171,82 +182,48 @@ class GoktugGPT(nn.Module):
         stop_token_ids: Optional[list] = None,
     ) -> torch.Tensor:
         """
-        Autoregressive text generation with temperature, top-k, top-p
-        (nucleus) sampling, and repetition penalty.
-
-        Args:
-            input_ids:          (1, T) prompt token IDs.
-            max_new_tokens:     maximum tokens to generate.
-            temperature:        >1 = more random, <1 = more greedy.
-            top_k:              keep only top-k tokens before sampling.
-            top_p:              nucleus sampling threshold.
-            repetition_penalty: penalise tokens already in the context (>1 = more penalty).
-            eos_token_id:       stop generating when this token is produced.
-            stop_token_ids:     list of additional stop tokens.
-
-        Returns:
-            (1, T + new_tokens) tensor.
+        Autoregressive generation with a KV-cache: the prompt is encoded once
+        (prefill), then each new token attends to the cached keys/values instead
+        of recomputing the whole sequence.
         """
         self.eval()
         stop_ids = set(stop_token_ids or [])
         if eos_token_id is not None:
             stop_ids.add(eos_token_id)
 
+        # Crop the prompt to the context window.
+        generated = input_ids[:, -self.max_seq_len:]
+
+        # --- Prefill: encode the whole prompt, fill the cache ---
+        out = self(generated, use_cache=True, start_pos=0)
+        past = out["past_kvs"]
+        logits = out["logits"][:, -1, :]
+        cur_pos = generated.shape[1]
+
         for _ in range(max_new_tokens):
-            # Crop context to max_seq_len
-            ctx = input_ids[:, -self.max_seq_len:]
-
-            out = self(ctx)
-            logits = out["logits"][:, -1, :]  # (1, vocab_size) — last position
-
-            # --- Repetition penalty ---
-            # Divide logits for tokens that already appear in the context.
-            # Positive logits are divided (made less likely);
-            # negative logits are multiplied (pushed further negative).
-            if repetition_penalty != 1.0:
-                for token_id in set(input_ids[0].tolist()):
-                    if logits[0, token_id] > 0:
-                        logits[0, token_id] /= repetition_penalty
-                    else:
-                        logits[0, token_id] *= repetition_penalty
-
-            # --- Temperature scaling ---
-            if temperature != 1.0:
-                logits = logits / temperature
-
-            # --- Top-k filtering ---
-            if top_k > 0:
-                k = min(top_k, logits.size(-1))
-                top_k_vals = torch.topk(logits, k).values[:, -1:]
-                logits = logits.masked_fill(logits < top_k_vals, float("-inf"))
-
-            # --- Top-p (nucleus) filtering ---
-            if top_p < 1.0:
-                sorted_logits, sorted_idx = torch.sort(logits, descending=True)
-                cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                # Remove tokens beyond nucleus
-                remove = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
-                sorted_logits[remove] = float("-inf")
-                # Unsort
-                logits = sorted_logits.scatter(1, sorted_idx, sorted_logits)
-
-            # --- Sample next token ---
-            probs = F.softmax(logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)  # (1, 1)
-
-            input_ids = torch.cat([input_ids, next_token], dim=1)
+            next_token = self._sample_next(
+                logits, generated, temperature, top_k, top_p, repetition_penalty
+            )
+            generated = torch.cat([generated, next_token], dim=1)
 
             if next_token.item() in stop_ids:
                 break
+            if cur_pos >= self.max_seq_len:
+                break  # context window full (sliding-window cache is Phase 3)
 
-        return input_ids
+            # --- Decode step: feed ONLY the new token, reuse the cache ---
+            out = self(next_token, use_cache=True, past_kvs=past, start_pos=cur_pos)
+            past = out["past_kvs"]
+            logits = out["logits"][:, -1, :]
+            cur_pos += 1
+
+        return generated
 
     # ------------------------------------------------------------------
     # Utilities
     # ------------------------------------------------------------------
 
     def enable_gradient_checkpointing(self):
-        """Enable gradient checkpointing on the decoder to save VRAM."""
         self.decoder.use_gradient_checkpointing = True
 
     def num_parameters(self, trainable_only: bool = True) -> int:
@@ -259,7 +236,7 @@ class GoktugGPT(nn.Module):
         if extra:
             payload.update(extra)
         torch.save(payload, path)
-        print(f"Checkpoint saved → {path}")
+        print(f"Checkpoint saved -> {path}")
 
     @classmethod
     def load_checkpoint(
@@ -278,5 +255,5 @@ class GoktugGPT(nn.Module):
         model.load_state_dict(payload["model_state"])
         model.to(device)
         extra = {k: v for k, v in payload.items() if k != "model_state"}
-        print(f"Checkpoint loaded ← {path}")
+        print(f"Checkpoint loaded <- {path}")
         return model, extra
